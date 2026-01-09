@@ -7,33 +7,51 @@ using UnityEngine;
 namespace AvatarOutfitOptimizer
 {
     /// <summary>
-    /// VRChat Performance Rank Limits (approximate values based on VRChat documentation)
-    /// These may change - always verify with official VRChat documentation
+    /// VRChat Performance Rank Limits (based on VRChat SDK)
+    /// Source: VRChat SDK Performance Alerts
     /// </summary>
     public static class VRChatLimits
     {
-        // Excellent/Very Good limits
+        // === RECOMMENDED (Excellent) ===
+        public const int ExcellentTriangles = 32000;
         public const int ExcellentMeshes = 1;
         public const int ExcellentMaterials = 4;
         public const int ExcellentBones = 75;
         public const int ExcellentPhysBones = 4;
         public const int ExcellentPhysBoneTransforms = 16;
+        public const int ExcellentPhysBoneCollisionChecks = 32;
+        public const int ExcellentTextureMemoryMB = 40;
         
-        // Good limits
-        public const int GoodMeshes = 16;
-        public const int GoodMaterials = 32;
-        public const int GoodBones = 400;
-        public const int GoodPhysBones = 32;
-        public const int GoodPhysBoneTransforms = 256;
+        // === MAXIMUM (Good/Medium threshold) ===
+        public const int MaxTriangles = 70000;
+        public const int MaxMeshes = 16;
+        public const int MaxMaterials = 32;
+        public const int MaxBones = 400;
+        public const int MaxPhysBones = 32;
+        public const int MaxPhysBoneTransforms = 256;
+        public const int MaxPhysBoneCollisionChecks = 512;
+        public const int MaxTextureMemoryMB = 200;
         
-        // Medium limits
-        public const int MediumMeshes = 32;
-        public const int MediumMaterials = 64;
-        public const int MediumBones = 400;
-        public const int MediumPhysBones = 64;
-        public const int MediumPhysBoneTransforms = 512;
+        // === POOR (VeryPoor threshold) ===
+        public const int PoorTriangles = 70000;      // Above this = VeryPoor
+        public const int PoorMeshes = 32;
+        public const int PoorMaterials = 64;
+        public const int PoorBones = 400;            // No higher limit exists
+        public const int PoorPhysBones = 32;         // No higher limit exists
+        public const int PoorPhysBoneTransforms = 256;
         
-        // Poor = anything above Medium limits
+        // Aliases for backwards compatibility
+        public const int GoodMeshes = MaxMeshes;
+        public const int GoodMaterials = MaxMaterials;
+        public const int GoodBones = MaxBones;
+        public const int GoodPhysBones = MaxPhysBones;
+        public const int GoodPhysBoneTransforms = MaxPhysBoneTransforms;
+        
+        public const int MediumMeshes = PoorMeshes;
+        public const int MediumMaterials = PoorMaterials;
+        public const int MediumBones = PoorBones;
+        public const int MediumPhysBones = PoorPhysBones;
+        public const int MediumPhysBoneTransforms = PoorPhysBoneTransforms;
     }
 
     /// <summary>
@@ -62,6 +80,8 @@ namespace AvatarOutfitOptimizer
         public List<string> Recommendations { get; set; } = new List<string>();
 
         // Performance metrics
+        public int BeforeTriangleCount { get; set; }
+        public int AfterTriangleCount { get; set; }
         public int BeforeMeshCount { get; set; }
         public int AfterMeshCount { get; set; }
         public int BeforeMaterialCount { get; set; }
@@ -70,6 +90,8 @@ namespace AvatarOutfitOptimizer
         public int AfterBoneCount { get; set; }
         public int BeforePhysBoneCount { get; set; }
         public int AfterPhysBoneCount { get; set; }
+        public int BeforePhysBoneTransformCount { get; set; }
+        public int AfterPhysBoneTransformCount { get; set; }
         public int BeforeParameterCount { get; set; }
         public int AfterParameterCount { get; set; }
 
@@ -94,12 +116,14 @@ namespace AvatarOutfitOptimizer
             sb.AppendLine();
 
             // Metrics comparison with VRChat limits
-            sb.AppendLine("Performance Metrics (Current → After | Good Limit):");
-            sb.AppendLine($"  Meshes:      {BeforeMeshCount,3} → {AfterMeshCount,3} ({(AfterMeshCount - BeforeMeshCount):+0;-#}) | Good: {VRChatLimits.GoodMeshes} {GetLimitStatus(AfterMeshCount, VRChatLimits.GoodMeshes)}");
-            sb.AppendLine($"  Materials:   {BeforeMaterialCount,3} → {AfterMaterialCount,3} ({(AfterMaterialCount - BeforeMaterialCount):+0;-#}) | Good: {VRChatLimits.GoodMaterials} {GetLimitStatus(AfterMaterialCount, VRChatLimits.GoodMaterials)}");
-            sb.AppendLine($"  Bones:       {BeforeBoneCount,3} → {AfterBoneCount,3} ({(AfterBoneCount - BeforeBoneCount):+0;-#}) | Good: {VRChatLimits.GoodBones} {GetLimitStatus(AfterBoneCount, VRChatLimits.GoodBones)}");
-            sb.AppendLine($"  PhysBones:   {BeforePhysBoneCount,3} → {AfterPhysBoneCount,3} ({(AfterPhysBoneCount - BeforePhysBoneCount):+0;-#}) | Good: {VRChatLimits.GoodPhysBones} {GetLimitStatus(AfterPhysBoneCount, VRChatLimits.GoodPhysBones)}");
-            sb.AppendLine($"  Parameters:  {BeforeParameterCount,3} → {AfterParameterCount,3} ({(AfterParameterCount - BeforeParameterCount):+0;-#})");
+            sb.AppendLine("Performance Metrics (Before → After | Max Limit):");
+            sb.AppendLine($"  Triangles:     {BeforeTriangleCount,6} → {AfterTriangleCount,6} ({(AfterTriangleCount - BeforeTriangleCount):+0;-#}) | Max: {VRChatLimits.MaxTriangles} {GetLimitStatus(AfterTriangleCount, VRChatLimits.MaxTriangles)}");
+            sb.AppendLine($"  Meshes:        {BeforeMeshCount,6} → {AfterMeshCount,6} ({(AfterMeshCount - BeforeMeshCount):+0;-#}) | Max: {VRChatLimits.MaxMeshes} {GetLimitStatus(AfterMeshCount, VRChatLimits.MaxMeshes)}");
+            sb.AppendLine($"  Materials:     {BeforeMaterialCount,6} → {AfterMaterialCount,6} ({(AfterMaterialCount - BeforeMaterialCount):+0;-#}) | Max: {VRChatLimits.MaxMaterials} {GetLimitStatus(AfterMaterialCount, VRChatLimits.MaxMaterials)}");
+            sb.AppendLine($"  Bones:         {BeforeBoneCount,6} → {AfterBoneCount,6} ({(AfterBoneCount - BeforeBoneCount):+0;-#}) | Max: {VRChatLimits.MaxBones} {GetLimitStatus(AfterBoneCount, VRChatLimits.MaxBones)}");
+            sb.AppendLine($"  PhysBones:     {BeforePhysBoneCount,6} → {AfterPhysBoneCount,6} ({(AfterPhysBoneCount - BeforePhysBoneCount):+0;-#}) | Max: {VRChatLimits.MaxPhysBones} {GetLimitStatus(AfterPhysBoneCount, VRChatLimits.MaxPhysBones)}");
+            sb.AppendLine($"  PB Transforms: {BeforePhysBoneTransformCount,6} → {AfterPhysBoneTransformCount,6} ({(AfterPhysBoneTransformCount - BeforePhysBoneTransformCount):+0;-#}) | Max: {VRChatLimits.MaxPhysBoneTransforms} {GetLimitStatus(AfterPhysBoneTransformCount, VRChatLimits.MaxPhysBoneTransforms)}");
+            sb.AppendLine($"  Parameters:    {BeforeParameterCount,6} → {AfterParameterCount,6} ({(AfterParameterCount - BeforeParameterCount):+0;-#})");
             sb.AppendLine();
 
             // Avatar Fingerprint
@@ -187,39 +211,46 @@ namespace AvatarOutfitOptimizer
         /// Uses heuristics - NOT guaranteed VRChat rank
         /// </summary>
         public static EstimatedPerformanceTier EstimatePerformanceTier(
+            int triangleCount,
             int meshCount,
             int materialCount,
             int boneCount,
             int physBoneCount,
-            int parameterCount)
+            int physBoneTransformCount)
         {
             // Check against VRChat limits
             // Avatar rank is determined by the WORST category
             
-            // Check for Excellent tier
+            // Check for Excellent tier (Recommended limits)
             bool isExcellent = 
+                triangleCount <= VRChatLimits.ExcellentTriangles &&
                 meshCount <= VRChatLimits.ExcellentMeshes &&
                 materialCount <= VRChatLimits.ExcellentMaterials &&
                 boneCount <= VRChatLimits.ExcellentBones &&
-                physBoneCount <= VRChatLimits.ExcellentPhysBones;
+                physBoneCount <= VRChatLimits.ExcellentPhysBones &&
+                physBoneTransformCount <= VRChatLimits.ExcellentPhysBoneTransforms;
             
             if (isExcellent) return EstimatedPerformanceTier.Excellent;
             
-            // Check for Good tier
+            // Check for Good tier (Maximum limits)
             bool isGood = 
-                meshCount <= VRChatLimits.GoodMeshes &&
-                materialCount <= VRChatLimits.GoodMaterials &&
-                boneCount <= VRChatLimits.GoodBones &&
-                physBoneCount <= VRChatLimits.GoodPhysBones;
+                triangleCount <= VRChatLimits.MaxTriangles &&
+                meshCount <= VRChatLimits.MaxMeshes &&
+                materialCount <= VRChatLimits.MaxMaterials &&
+                boneCount <= VRChatLimits.MaxBones &&
+                physBoneCount <= VRChatLimits.MaxPhysBones &&
+                physBoneTransformCount <= VRChatLimits.MaxPhysBoneTransforms;
             
             if (isGood) return EstimatedPerformanceTier.Good;
             
-            // Check for Medium tier
+            // Check for Medium tier (Poor limits - same as Max for most)
             bool isMedium = 
-                meshCount <= VRChatLimits.MediumMeshes &&
-                materialCount <= VRChatLimits.MediumMaterials &&
-                boneCount <= VRChatLimits.MediumBones &&
-                physBoneCount <= VRChatLimits.MediumPhysBones;
+                triangleCount <= VRChatLimits.PoorTriangles &&
+                meshCount <= VRChatLimits.PoorMeshes &&
+                materialCount <= VRChatLimits.PoorMaterials &&
+                boneCount <= VRChatLimits.PoorBones &&
+                physBoneCount <= VRChatLimits.PoorPhysBones &&
+                physBoneTransformCount <= VRChatLimits.PoorPhysBoneTransforms;
             
             if (isMedium) return EstimatedPerformanceTier.Medium;
             
@@ -243,34 +274,40 @@ namespace AvatarOutfitOptimizer
 
             if (before != null)
             {
+                report.BeforeTriangleCount = before.TriangleCount;
                 report.BeforeMeshCount = before.MeshCount;
                 report.BeforeMaterialCount = before.MaterialCount;
                 report.BeforeBoneCount = before.BoneCount;
                 report.BeforePhysBoneCount = before.PhysBoneCount;
+                report.BeforePhysBoneTransformCount = before.PhysBoneTransformCount;
                 report.BeforeParameterCount = before.ParameterCount;
                 
                 report.BeforeTier = EstimatePerformanceTier(
+                    before.TriangleCount,
                     before.MeshCount,
                     before.MaterialCount,
                     before.BoneCount,
                     before.PhysBoneCount,
-                    before.ParameterCount);
+                    before.PhysBoneTransformCount);
             }
 
             if (after != null)
             {
+                report.AfterTriangleCount = after.TriangleCount;
                 report.AfterMeshCount = after.MeshCount;
                 report.AfterMaterialCount = after.MaterialCount;
                 report.AfterBoneCount = after.BoneCount;
                 report.AfterPhysBoneCount = after.PhysBoneCount;
+                report.AfterPhysBoneTransformCount = after.PhysBoneTransformCount;
                 report.AfterParameterCount = after.ParameterCount;
                 
                 report.AfterTier = EstimatePerformanceTier(
+                    after.TriangleCount,
                     after.MeshCount,
                     after.MaterialCount,
                     after.BoneCount,
                     after.PhysBoneCount,
-                    after.ParameterCount);
+                    after.PhysBoneTransformCount);
             }
 
             // Generate warnings

@@ -26,6 +26,8 @@ namespace AvatarOutfitOptimizer
         [SerializeField] private int materialCount;
         [SerializeField] private int boneCount;
         [SerializeField] private int physBoneCount;
+        [SerializeField] private int physBoneTransformCount;
+        [SerializeField] private int triangleCount;
         [SerializeField] private int parameterCount;
 
         // Default constructor for serialization
@@ -42,6 +44,8 @@ namespace AvatarOutfitOptimizer
         public int MaterialCount => materialCount;
         public int BoneCount => boneCount;
         public int PhysBoneCount => physBoneCount;
+        public int PhysBoneTransformCount => physBoneTransformCount;
+        public int TriangleCount => triangleCount;
         public int ParameterCount => parameterCount;
 
         /// <summary>
@@ -117,9 +121,15 @@ namespace AvatarOutfitOptimizer
                 snapshot.boneCount = usedBones.Count;
                 snapshot.physBoneCount = snapshot.activePhysBonePaths.Count;
                 snapshot.parameterCount = snapshot.expressionParameterNames.Count + snapshot.animatorParameterNames.Count;
+                
+                // Count triangles from all renderers
+                snapshot.triangleCount = CountTriangles(renderers);
+                
+                // Count PhysBone transforms (affected bones)
+                snapshot.physBoneTransformCount = CountPhysBoneTransforms(avatarRoot, includeInactive);
 
                 string mode = includeInactive ? "full (all objects)" : "active only";
-                Debug.Log($"[AvatarOptimizer] Snapshot captured ({mode}): {snapshot.meshCount} meshes, {snapshot.materialCount} materials, {snapshot.boneCount} bones");
+                Debug.Log($"[AvatarOptimizer] Snapshot captured ({mode}): {snapshot.meshCount} meshes, {snapshot.triangleCount} tris, {snapshot.boneCount} bones, {snapshot.physBoneTransformCount} PB transforms");
             }
             catch (Exception e)
             {
@@ -354,6 +364,97 @@ namespace AvatarOutfitOptimizer
             }
 
             return parameters;
+        }
+
+        /// <summary>
+        /// Counts total triangles from all renderers
+        /// </summary>
+        private static int CountTriangles(List<SkinnedMeshRenderer> renderers)
+        {
+            int totalTriangles = 0;
+            
+            foreach (var renderer in renderers)
+            {
+                if (renderer != null && renderer.sharedMesh != null)
+                {
+                    totalTriangles += renderer.sharedMesh.triangles.Length / 3;
+                }
+            }
+            
+            return totalTriangles;
+        }
+
+        /// <summary>
+        /// Counts total PhysBone transforms (affected bones)
+        /// This is the sum of all bones affected by PhysBone components
+        /// </summary>
+        private static int CountPhysBoneTransforms(GameObject avatarRoot, bool includeInactive)
+        {
+            int totalTransforms = 0;
+            
+            // VRC SDK 3 PhysBone component type
+            var physBoneType = Type.GetType("VRC.SDK3.Dynamics.PhysBone.Components.VRCPhysBone, VRC.SDK3.Dynamics.PhysBone");
+            if (physBoneType == null)
+            {
+                physBoneType = Type.GetType("VRC.Dynamics.VRCPhysBone, VRC.SDK3.Dynamics");
+            }
+
+            if (physBoneType == null) return 0;
+
+            var rootTransformProperty = physBoneType.GetProperty("rootTransform");
+            
+            var allPhysBones = avatarRoot.GetComponentsInChildren(physBoneType, true);
+            foreach (var physBone in allPhysBones)
+            {
+                if (physBone == null) continue;
+                
+                var component = physBone as Component;
+                if (component == null) continue;
+                
+                // Check if PhysBone is relevant (same logic as CapturePhysBones)
+                bool isRelevant = true;
+                if (!includeInactive)
+                {
+                    isRelevant = component.gameObject.activeInHierarchy;
+                    
+                    if (isRelevant && rootTransformProperty != null)
+                    {
+                        var rootTransform = rootTransformProperty.GetValue(physBone) as Transform;
+                        if (rootTransform == null) rootTransform = component.transform;
+                        isRelevant = rootTransform.gameObject.activeInHierarchy;
+                    }
+                }
+                
+                if (!isRelevant) continue;
+                
+                // Count transforms affected by this PhysBone
+                Transform pbRoot = null;
+                if (rootTransformProperty != null)
+                {
+                    pbRoot = rootTransformProperty.GetValue(physBone) as Transform;
+                }
+                if (pbRoot == null) pbRoot = component.transform;
+                
+                // Count all child transforms (this is how VRChat counts PhysBone transforms)
+                totalTransforms += CountChildTransforms(pbRoot);
+            }
+            
+            return totalTransforms;
+        }
+
+        /// <summary>
+        /// Recursively counts all child transforms
+        /// </summary>
+        private static int CountChildTransforms(Transform root)
+        {
+            if (root == null) return 0;
+            
+            int count = 1; // Count self
+            foreach (Transform child in root)
+            {
+                count += CountChildTransforms(child);
+            }
+            return count;
         }
     }
 
