@@ -2,9 +2,29 @@
 
 ## Adding the Package to VCC (VRChat Creator Companion)
 
-### Method 1: Local Package (Recommended for Development)
+**Important:** The "Add Repository" button in VCC is for VPM repositories (with index.json format), NOT for Git repositories. Use one of the methods below instead.
 
-**Important:** The "Add Repository" button is for remote repositories (URLs), not local packages. For local packages, use one of these methods:
+### Method 1: Install from GitHub (Recommended)
+
+#### Option A: Via Unity Package Manager
+
+1. **Open your VRChat project in Unity** (through VCC)
+2. **In Unity Editor**, go to: `Window > Package Manager`
+3. Click the **"+"** button in the top-left of Package Manager
+4. Select **"Add package from git URL..."**
+5. Enter: `https://github.com/Sophey3dx/VR-Chat-Avatar-Optimizer.git`
+6. Click **"Add"** - the package will be downloaded and imported automatically
+
+#### Option B: Via manifest.json
+
+1. Open your project's `Packages/manifest.json` file
+2. Add this line to the `dependencies` section:
+   ```json
+   "com.vrchat.avatar-optimizer": "https://github.com/Sophey3dx/VR-Chat-Avatar-Optimizer.git"
+   ```
+3. Save the file - Unity will automatically download and import the package
+
+### Method 2: Local Package (For Development)
 
 #### Option A: Via Unity Editor (Easiest)
 

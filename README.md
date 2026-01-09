@@ -27,15 +27,37 @@ A production-ready Unity Editor Tool for VRChat avatar creators that automatical
 
 ## Installation
 
-### Adding to VCC (VRChat Creator Companion)
+### Method 1: Install from GitHub (Recommended)
 
-1. **Open VCC** and your VRChat project
-2. **Go to Packages tab** in VCC
-3. **Click "Add Package"** → **"Add from disk"**
-4. **Navigate to this folder** and select it
-5. The package will be automatically added to your project
+**Important:** The "Add Repository" button in VCC is for VPM repositories (with index.json), not Git repositories. Use one of these methods instead:
 
-Alternatively, you can copy this folder to your project's `Packages/` directory.
+#### Option A: Via Unity Package Manager (Easiest)
+
+1. **Open your VRChat project in Unity** (through VCC)
+2. **In Unity Editor**, go to: `Window > Package Manager`
+3. Click the **"+"** button in the top-left
+4. Select **"Add package from git URL..."**
+5. Enter this URL:
+   ```
+   https://github.com/Sophey3dx/VR-Chat-Avatar-Optimizer.git
+   ```
+6. Click **"Add"** - the package will be installed automatically
+
+#### Option B: Via manifest.json
+
+1. Open your project's `Packages/manifest.json` file
+2. Add this line to the dependencies:
+   ```json
+   "com.vrchat.avatar-optimizer": "https://github.com/Sophey3dx/VR-Chat-Avatar-Optimizer.git"
+   ```
+3. Save the file - Unity will automatically download and import the package
+
+### Method 2: Local Installation
+
+1. **Clone or download** this repository
+2. **Open Unity Package Manager** (`Window > Package Manager`)
+3. Click **"+"** → **"Add package from disk..."**
+4. Navigate to the downloaded folder and select **`package.json`**
 
 See `INSTALLATION.md` for detailed instructions.
 
