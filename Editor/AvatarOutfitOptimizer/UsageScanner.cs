@@ -235,10 +235,50 @@ namespace AvatarOutfitOptimizer
 
         private void ScanBehaviour(StateMachineBehaviour behaviour, AvatarSnapshot snapshot)
         {
-            // Behaviours can reference parameters, but we can't easily detect this without reflection
-            // This is a limitation - we mark behaviours as potentially using parameters
-            // In practice, behaviours are often custom scripts that may use parameters
-            // We err on the side of caution and don't mark parameters as unused if behaviours exist
+            if (behaviour == null) return;
+
+            // Check for VRCAvatarParameterDriver which can set parameters
+            // Use reflection to avoid hard dependency on VRC SDK types
+            var behaviourType = behaviour.GetType();
+            
+            if (behaviourType.Name == "VRCAvatarParameterDriver")
+            {
+                try
+                {
+                    // Get the parameters property via reflection
+                    var parametersProperty = behaviourType.GetProperty("parameters");
+                    if (parametersProperty != null)
+                    {
+                        var parameters = parametersProperty.GetValue(behaviour) as System.Collections.IList;
+                        if (parameters != null)
+                        {
+                            foreach (var param in parameters)
+                            {
+                                if (param != null)
+                                {
+                                    // Get the name property of each parameter entry
+                                    var nameProperty = param.GetType().GetProperty("name");
+                                    if (nameProperty != null)
+                                    {
+                                        string paramName = nameProperty.GetValue(param) as string;
+                                        if (!string.IsNullOrEmpty(paramName))
+                                        {
+                                            MarkParameterUsed(paramName);
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+                catch (System.Exception e)
+                {
+                    Debug.LogWarning($"[AvatarOptimizer] Could not scan VRCAvatarParameterDriver: {e.Message}");
+                }
+            }
+            
+            // For other behaviour types, we can't easily detect parameter usage
+            // We err on the side of caution
         }
 
         private void ScanExpressionMenu(VRCExpressionsMenu menu, AvatarSnapshot snapshot)

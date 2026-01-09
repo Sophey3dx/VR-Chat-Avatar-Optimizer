@@ -1,5 +1,6 @@
 using System.Collections.Generic;
 using System.Linq;
+using System.IO;
 using UnityEngine;
 using UnityEditor;
 using UnityEditor.Animations;
@@ -10,12 +11,13 @@ namespace AvatarOutfitOptimizer.Cleanup
 {
     /// <summary>
     /// Cleans up Animator Controller: removes unused clips, parameters, states, transitions
-    /// Vorsichtig: Only removes safely unused components
+    /// IMPORTANT: Always duplicates the controller first to protect the original asset
     /// </summary>
     public class AnimatorCleanup
     {
         /// <summary>
         /// Cleans up Animator Controller on duplicate avatar
+        /// Creates a duplicate of the controller to protect the original
         /// </summary>
         public void Cleanup(
             GameObject duplicate,
@@ -36,28 +38,100 @@ namespace AvatarOutfitOptimizer.Cleanup
                 return;
             }
 
-            var fxLayer = AvatarUtils.GetFXLayer(descriptor);
-            if (fxLayer == null)
+            var originalFxLayer = AvatarUtils.GetFXLayer(descriptor);
+            if (originalFxLayer == null)
             {
                 Debug.LogWarning("[AvatarOptimizer] No FX Layer found - skipping Animator cleanup");
                 return;
             }
 
-            if (fxLayer is AnimatorController controller)
+            if (originalFxLayer is AnimatorController originalController)
             {
-                // Remove unused parameters
-                RemoveUnusedParameters(controller, analysis);
+                // IMPORTANT: Duplicate the controller to protect the original asset
+                AnimatorController duplicatedController = DuplicateAnimatorController(originalController, duplicate.name);
+                
+                if (duplicatedController == null)
+                {
+                    Debug.LogError("[AvatarOptimizer] Failed to duplicate AnimatorController - skipping cleanup");
+                    return;
+                }
 
-                // Remove unused clips
-                RemoveUnusedClips(controller, analysis, aggressiveMode);
+                // Assign duplicated controller to the avatar
+                SetFXLayer(descriptor, duplicatedController);
+
+                // Now perform cleanup on the DUPLICATED controller
+                RemoveUnusedParameters(duplicatedController, analysis);
+                RemoveUnusedClips(duplicatedController, analysis, aggressiveMode);
 
                 // Remove unused states and transitions (risky - only in aggressive mode)
                 if (aggressiveMode)
                 {
-                    RemoveUnusedStates(controller, analysis);
+                    RemoveUnusedStates(duplicatedController, analysis);
                 }
 
-                Debug.Log("[AvatarOptimizer] Animator cleanup completed");
+                Debug.Log("[AvatarOptimizer] Animator cleanup completed (using duplicated controller)");
+            }
+        }
+
+        /// <summary>
+        /// Duplicates an AnimatorController asset to protect the original
+        /// </summary>
+        private AnimatorController DuplicateAnimatorController(AnimatorController original, string avatarName)
+        {
+            if (original == null) return null;
+
+            string originalPath = AssetDatabase.GetAssetPath(original);
+            if (string.IsNullOrEmpty(originalPath))
+            {
+                Debug.LogWarning("[AvatarOptimizer] Original controller has no asset path - cannot duplicate");
+                return null;
+            }
+
+            // Create a unique path for the duplicate
+            string directory = Path.GetDirectoryName(originalPath);
+            string originalName = Path.GetFileNameWithoutExtension(originalPath);
+            string extension = Path.GetExtension(originalPath);
+            string duplicatePath = Path.Combine(directory, $"{originalName}_{avatarName}_Optimized{extension}");
+            
+            // Ensure unique path
+            duplicatePath = AssetDatabase.GenerateUniqueAssetPath(duplicatePath);
+
+            // Copy the asset
+            if (!AssetDatabase.CopyAsset(originalPath, duplicatePath))
+            {
+                Debug.LogError($"[AvatarOptimizer] Failed to copy AnimatorController to {duplicatePath}");
+                return null;
+            }
+
+            AssetDatabase.Refresh();
+
+            var duplicated = AssetDatabase.LoadAssetAtPath<AnimatorController>(duplicatePath);
+            if (duplicated != null)
+            {
+                Debug.Log($"[AvatarOptimizer] Created duplicate controller: {duplicatePath}");
+            }
+
+            return duplicated;
+        }
+
+        /// <summary>
+        /// Sets the FX layer controller on the avatar descriptor
+        /// </summary>
+        private void SetFXLayer(VRCAvatarDescriptor descriptor, AnimatorController controller)
+        {
+            if (descriptor == null || controller == null) return;
+
+            var layers = descriptor.baseAnimationLayers;
+            for (int i = 0; i < layers.Length; i++)
+            {
+                if (layers[i].type == VRCAvatarDescriptor.AnimLayerType.FX)
+                {
+                    Undo.RecordObject(descriptor, "Set FX Layer Controller");
+                    layers[i].animatorController = controller;
+                    descriptor.baseAnimationLayers = layers;
+                    EditorUtility.SetDirty(descriptor);
+                    break;
+                }
             }
         }
 

@@ -125,6 +125,18 @@ namespace AvatarOutfitOptimizer
                 // This is why we need to be cautious
             }
 
+            // IMPORTANT: Track Write Defaults Off states
+            // States with writeDefaultValues = false may have clips that appear unused
+            // but are actually needed for proper animation behavior
+            if (!state.writeDefaultValues)
+            {
+                // Mark this state's clip as potentially used even if not directly referenced
+                if (state.motion is AnimationClip clip)
+                {
+                    result.AllReferencedClips.Add(clip);
+                }
+            }
+
             // Check transitions
             if (state.transitions != null)
             {

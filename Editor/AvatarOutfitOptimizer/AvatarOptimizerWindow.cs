@@ -44,6 +44,7 @@ namespace AvatarOutfitOptimizer
         private readonly string[] tabs = { "Guide", "Analysis", "Optimize" };
 
         [MenuItem("Window/VRChat Avatar Optimizer")]
+        [MenuItem("Tools/VRChat Avatar Optimizer")]
         public static void ShowWindow()
         {
             GetWindow<AvatarOptimizerWindow>("Avatar Optimizer");
@@ -550,50 +551,70 @@ namespace AvatarOutfitOptimizer
         {
             // Create a simulated snapshot for dry run
             // This estimates what the snapshot would look like after cleanup
-            // In production, you'd run the analysis without actually modifying
             
             if (currentSnapshot == null) return null;
 
-            // Create a copy and simulate removals
-            var simulated = new AvatarSnapshot();
-            
-            // Simulate removals based on analysis
-            var removedObjects = new List<string>();
-            var removedRenderers = new List<string>();
-            var removedBones = new List<string>();
-            var removedPhysBones = new List<string>();
-            var removedParams = new List<string>();
+            // Calculate estimated removals based on analysis and enabled cleanup areas
+            int removedMeshes = 0;
+            int removedMaterials = 0;
+            int removedBones = 0;
+            int removedPhysBones = 0;
+            int removedParams = 0;
 
-            // Estimate based on analysis results
-            if (animatorAnalysis != null)
+            // Object cleanup estimates
+            if (cleanupObjects)
+            {
+                // Inactive renderers would be removed
+                // This is already reflected in the snapshot (only active renderers counted)
+            }
+
+            // Animator cleanup estimates
+            if (cleanupAnimator && animatorAnalysis != null)
             {
                 if (animatorAnalysis.UnusedParameters != null)
                 {
-                    removedParams.AddRange(animatorAnalysis.UnusedParameters);
+                    removedParams += animatorAnalysis.UnusedParameters.Count;
                 }
-            }
-
-            if (menuAnalysis != null)
-            {
-                if (menuAnalysis.BrokenParameterControls != null)
+                if (aggressiveAnimatorCleanup && animatorAnalysis.PotentiallyUnusedClips != null)
                 {
-                    // Estimate parameter removals from broken controls
-                    // This is simplified - real implementation would track actual parameters
+                    // Potentially unused clips don't directly affect counts
                 }
             }
 
-            if (physBoneAnalysis != null)
+            // Menu cleanup estimates
+            if (cleanupMenu && menuAnalysis != null)
+            {
+                // Broken parameter controls don't directly affect parameter count
+                // They just remove menu items
+            }
+
+            // PhysBone cleanup estimates
+            if (cleanupPhysBones && physBoneAnalysis != null)
             {
                 if (physBoneAnalysis.PhysBonesOnDeletedObjects != null)
                 {
-                    // Estimate PhysBone removals
-                    // This is simplified
+                    removedPhysBones += physBoneAnalysis.PhysBonesOnDeletedObjects.Count;
                 }
             }
 
-            // Create simulated snapshot (simplified)
-            // In production, you'd properly simulate all changes
-            return currentSnapshot; // Placeholder - would need proper simulation
+            // Bone pruning estimates (only in aggressive mode)
+            if (aggressiveBonePruning && physBoneAnalysis != null)
+            {
+                if (physBoneAnalysis.PrunableBones != null)
+                {
+                    removedBones += physBoneAnalysis.PrunableBones.Count;
+                }
+            }
+
+            // Create simulated snapshot with estimated values
+            return AvatarSnapshot.CreateSimulated(
+                currentSnapshot.MeshCount - removedMeshes,
+                currentSnapshot.MaterialCount - removedMaterials,
+                currentSnapshot.BoneCount - removedBones,
+                currentSnapshot.PhysBoneCount - removedPhysBones,
+                currentSnapshot.ParameterCount - removedParams,
+                currentSnapshot.AvatarFingerprint
+            );
         }
     }
 }

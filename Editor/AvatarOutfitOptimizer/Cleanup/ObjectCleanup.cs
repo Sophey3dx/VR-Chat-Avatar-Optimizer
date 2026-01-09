@@ -112,30 +112,41 @@ namespace AvatarOutfitOptimizer.Cleanup
                 return;
             }
 
+            // Build set of protected humanoid bones
+            var protectedBones = GetHumanoidBones(root);
+
             int prunedCount = 0;
+            int skippedHumanoidCount = 0;
 
             foreach (var bone in physBoneAnalysis.PrunableBones)
             {
                 if (bone == null) continue;
+
+                // CRITICAL: Never prune humanoid rig bones
+                if (protectedBones.Contains(bone))
+                {
+                    skippedHumanoidCount++;
+                    continue;
+                }
 
                 string bonePath = GetGameObjectPath(root.transform, bone);
 
                 // Double-check: bone should not be in used bones
                 if (!snapshot.UsedBonePaths.Contains(bonePath))
                 {
-                    // Check if bone has children that are used
-                    bool hasUsedChildren = false;
+                    // Check if bone has children that are used or are humanoid bones
+                    bool hasProtectedChildren = false;
                     foreach (Transform child in bone)
                     {
                         string childPath = GetGameObjectPath(root.transform, child);
-                        if (snapshot.UsedBonePaths.Contains(childPath))
+                        if (snapshot.UsedBonePaths.Contains(childPath) || protectedBones.Contains(child))
                         {
-                            hasUsedChildren = true;
+                            hasProtectedChildren = true;
                             break;
                         }
                     }
 
-                    if (!hasUsedChildren)
+                    if (!hasProtectedChildren)
                     {
                         Undo.DestroyObjectImmediate(bone.gameObject);
                         prunedCount++;
@@ -147,6 +158,53 @@ namespace AvatarOutfitOptimizer.Cleanup
             {
                 Debug.LogWarning($"[AvatarOptimizer] Pruned {prunedCount} bones (aggressive mode)");
             }
+            if (skippedHumanoidCount > 0)
+            {
+                Debug.Log($"[AvatarOptimizer] Protected {skippedHumanoidCount} humanoid rig bones from pruning");
+            }
+        }
+
+        /// <summary>
+        /// Gets all humanoid rig bones that should never be pruned
+        /// </summary>
+        private HashSet<Transform> GetHumanoidBones(GameObject root)
+        {
+            var humanoidBones = new HashSet<Transform>();
+            
+            var animator = root.GetComponent<Animator>();
+            if (animator == null || !animator.isHuman)
+            {
+                return humanoidBones;
+            }
+
+            // Get all standard humanoid bones
+            foreach (HumanBodyBones boneType in System.Enum.GetValues(typeof(HumanBodyBones)))
+            {
+                if (boneType == HumanBodyBones.LastBone) continue;
+                
+                try
+                {
+                    var boneTransform = animator.GetBoneTransform(boneType);
+                    if (boneTransform != null)
+                    {
+                        humanoidBones.Add(boneTransform);
+                        
+                        // Also protect all parent bones up to root
+                        var parent = boneTransform.parent;
+                        while (parent != null && parent != root.transform)
+                        {
+                            humanoidBones.Add(parent);
+                            parent = parent.parent;
+                        }
+                    }
+                }
+                catch
+                {
+                    // Some bone types might not be mapped - that's okay
+                }
+            }
+
+            return humanoidBones;
         }
 
         private string GetGameObjectPath(Transform root, Transform target)

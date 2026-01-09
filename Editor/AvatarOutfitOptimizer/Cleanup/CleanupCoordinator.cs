@@ -15,6 +15,7 @@ namespace AvatarOutfitOptimizer.Cleanup
         private AnimatorCleanup animatorCleanup;
         private MenuCleanup menuCleanup;
         private PhysBoneCleanup physBoneCleanup;
+        private ExpressionParameterCleanup expressionParameterCleanup;
 
         public CleanupCoordinator()
         {
@@ -22,6 +23,7 @@ namespace AvatarOutfitOptimizer.Cleanup
             animatorCleanup = new AnimatorCleanup();
             menuCleanup = new MenuCleanup();
             physBoneCleanup = new PhysBoneCleanup();
+            expressionParameterCleanup = new ExpressionParameterCleanup();
         }
 
         /// <summary>
@@ -131,6 +133,9 @@ namespace AvatarOutfitOptimizer.Cleanup
             {
                 // 3. Animator cleanup (removes unused clips, parameters, states)
                 animatorCleanup.Cleanup(duplicate, animatorAnalysis, usageScanner, aggressiveAnimatorCleanup);
+                
+                // 3b. Expression Parameters cleanup (runs alongside Animator cleanup)
+                expressionParameterCleanup.Cleanup(duplicate, animatorAnalysis, usageScanner);
             }
 
             if (cleanupMenu)

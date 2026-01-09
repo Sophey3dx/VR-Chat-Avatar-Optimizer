@@ -128,6 +128,27 @@ namespace AvatarOutfitOptimizer
         }
 
         /// <summary>
+        /// Creates a simulated snapshot with estimated values for dry run mode
+        /// </summary>
+        public static AvatarSnapshot CreateSimulated(
+            int meshCount,
+            int materialCount,
+            int boneCount,
+            int physBoneCount,
+            int parameterCount,
+            string fingerprint)
+        {
+            var snapshot = new AvatarSnapshot();
+            snapshot.meshCount = Math.Max(0, meshCount);
+            snapshot.materialCount = Math.Max(0, materialCount);
+            snapshot.boneCount = Math.Max(0, boneCount);
+            snapshot.physBoneCount = Math.Max(0, physBoneCount);
+            snapshot.parameterCount = Math.Max(0, parameterCount);
+            snapshot.avatarFingerprint = fingerprint + "_simulated";
+            return snapshot;
+        }
+
+        /// <summary>
         /// Compares this snapshot with another and returns differences
         /// </summary>
         public SnapshotComparison Compare(AvatarSnapshot other)

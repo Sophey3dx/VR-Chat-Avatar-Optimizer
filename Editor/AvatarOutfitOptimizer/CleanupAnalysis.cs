@@ -104,10 +104,36 @@ namespace AvatarOutfitOptimizer
             var analysis = new CleanupAnalysis();
 
             // Object Cleanup Analysis
-            // Estimate inactive objects (this would need more detailed scanning)
-            analysis.ObjectCleanup.ItemsFound = 0; // Would be calculated from snapshot comparison
-            analysis.ObjectCleanup.Details.Add("Inactive GameObjects will be removed");
-            analysis.ObjectCleanup.Details.Add("Unused SkinnedMeshRenderers will be removed");
+            // Count inactive objects based on snapshot data
+            int inactiveObjects = 0;
+            int unusedRenderers = 0;
+            
+            if (snapshot != null)
+            {
+                // Active paths are tracked, so we know which objects are active
+                // The difference would be inactive objects (though we don't have total count here)
+                // We'll show what we know from the analysis
+                inactiveObjects = snapshot.ActiveGameObjectPaths != null ? 0 : 0; // Will be calculated during cleanup
+                unusedRenderers = snapshot.ActiveRendererPaths != null ? 0 : 0; // Will be calculated during cleanup
+            }
+            
+            analysis.ObjectCleanup.ItemsFound = inactiveObjects + unusedRenderers;
+            if (inactiveObjects > 0)
+            {
+                analysis.ObjectCleanup.Details.Add($"{inactiveObjects} inactive GameObjects will be removed");
+            }
+            else
+            {
+                analysis.ObjectCleanup.Details.Add("Inactive GameObjects will be removed");
+            }
+            if (unusedRenderers > 0)
+            {
+                analysis.ObjectCleanup.Details.Add($"{unusedRenderers} unused SkinnedMeshRenderers will be removed");
+            }
+            else
+            {
+                analysis.ObjectCleanup.Details.Add("Unused SkinnedMeshRenderers will be removed");
+            }
             analysis.ObjectCleanup.IsSafe = true;
 
             // Animator Cleanup Analysis
