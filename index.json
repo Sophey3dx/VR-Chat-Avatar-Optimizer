@@ -6,18 +6,20 @@
   "packages": {
     "com.sophey3dx.avatar-optimizer": {
       "versions": {
-        "1.0.8": {
+        "1.0.9": {
           "name": "com.sophey3dx.avatar-optimizer",
           "displayName": "VRChat Avatar Optimizer",
-          "version": "1.0.8",
+          "version": "1.0.9",
           "unity": "2022.3",
           "description": "Production-ready Unity Editor Tool for automatically optimizing VRChat avatars.",
           "author": {
             "name": "Sophey3dx",
             "url": "https://github.com/Sophey3dx"
           },
-          "url": "https://github.com/Sophey3dx/VR-Chat-Avatar-Optimizer.git",
-          "gitDependencies": {},
+          "vpmDependencies": {
+            "com.vrchat.avatars": ">=3.4.0"
+          },
+          "url": "https://github.com/Sophey3dx/VR-Chat-Avatar-Optimizer.git#v1.0.9",
           "legacyFolders": {},
           "legacyFiles": {}
         }
