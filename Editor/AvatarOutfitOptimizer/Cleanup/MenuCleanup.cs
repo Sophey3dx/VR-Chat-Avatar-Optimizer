@@ -63,7 +63,7 @@ namespace AvatarOutfitOptimizer.Cleanup
                 return;
             }
 
-            var controlsToRemove = analysis.BrokenParameterControls.ToHashSet();
+            var controlsToRemove = new HashSet<VRCExpressionsMenu.Control>(analysis.BrokenParameterControls);
             var newControls = new List<VRCExpressionsMenu.Control>();
 
             foreach (var control in menu.controls)
@@ -74,12 +74,14 @@ namespace AvatarOutfitOptimizer.Cleanup
                 }
             }
 
-            if (newControls.Count < menu.controls.Count)
+            int originalCount = menu.controls.Count;
+            if (newControls.Count < originalCount)
             {
                 Undo.RecordObject(menu, "Remove Broken Parameter Controls");
-                menu.controls = newControls.ToArray();
+                menu.controls.Clear();
+                menu.controls.AddRange(newControls);
                 EditorUtility.SetDirty(menu);
-                Debug.Log($"[AvatarOptimizer] Removed {menu.controls.Length - newControls.Count} broken parameter controls");
+                Debug.Log($"[AvatarOptimizer] Removed {originalCount - newControls.Count} broken parameter controls");
             }
 
             // Recursively process submenus
@@ -101,7 +103,7 @@ namespace AvatarOutfitOptimizer.Cleanup
                 return;
             }
 
-            var emptySubmenus = analysis.EmptySubmenus.ToHashSet();
+            var emptySubmenus = new HashSet<VRCExpressionsMenu>(analysis.EmptySubmenus);
 
             // Check if any controls reference empty submenus
             var controlsToRemove = new List<VRCExpressionsMenu.Control>();
@@ -126,8 +128,9 @@ namespace AvatarOutfitOptimizer.Cleanup
             if (controlsToRemove.Count > 0)
             {
                 Undo.RecordObject(menu, "Remove Empty Submenus");
-                var newControls = menu.controls.Where(c => !controlsToRemove.Contains(c)).ToArray();
-                menu.controls = newControls;
+                var keepControls = menu.controls.Where(c => !controlsToRemove.Contains(c)).ToList();
+                menu.controls.Clear();
+                menu.controls.AddRange(keepControls);
                 EditorUtility.SetDirty(menu);
                 Debug.Log($"[AvatarOptimizer] Removed {controlsToRemove.Count} empty submenus");
             }

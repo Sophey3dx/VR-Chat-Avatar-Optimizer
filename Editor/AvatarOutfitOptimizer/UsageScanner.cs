@@ -216,7 +216,7 @@ namespace AvatarOutfitOptimizer
             }
         }
 
-        private void ScanTransition(AnimatorStateTransition transition, AvatarSnapshot snapshot)
+        private void ScanTransition(AnimatorTransitionBase transition, AvatarSnapshot snapshot)
         {
             if (transition == null) return;
 

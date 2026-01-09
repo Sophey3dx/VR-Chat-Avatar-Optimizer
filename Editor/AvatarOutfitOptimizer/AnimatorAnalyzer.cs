@@ -176,7 +176,7 @@ namespace AvatarOutfitOptimizer
             }
         }
 
-        private void FindReferencesInTransition(AnimatorStateTransition transition, AnimatorAnalysisResult result)
+        private void FindReferencesInTransition(AnimatorTransitionBase transition, AnimatorAnalysisResult result)
         {
             if (transition == null) return;
 

@@ -226,7 +226,8 @@ namespace AvatarOutfitOptimizer
             EditorGUILayout.BeginVertical(EditorStyles.helpBox);
             
             EditorGUILayout.BeginHorizontal();
-            enabled = EditorGUILayout.Toggle(area.AreaName, enabled, EditorStyles.boldLabel);
+            enabled = EditorGUILayout.Toggle(enabled, GUILayout.Width(20));
+            EditorGUILayout.LabelField(area.AreaName, EditorStyles.boldLabel);
             EditorGUILayout.EndHorizontal();
             
             EditorGUILayout.LabelField(area.Description, EditorStyles.wordWrappedLabel);
