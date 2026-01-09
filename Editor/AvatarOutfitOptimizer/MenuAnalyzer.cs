@@ -113,10 +113,8 @@ namespace AvatarOutfitOptimizer
             // VRChat parameter budget calculation
             // Expression Parameters have a budget based on parameter types
             // This is a simplified calculation - actual budget depends on parameter types
-            int budget = 0;
-            
             // Each parameter type has different memory cost
-            // For now, we use a conservative estimate
+            // For now, we use a conservative estimate based on parameter count
             // TODO: More accurate budget calculation based on actual parameter types
             
             return snapshot.ParameterCount;

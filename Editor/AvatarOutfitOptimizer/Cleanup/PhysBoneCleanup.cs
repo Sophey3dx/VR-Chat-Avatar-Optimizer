@@ -117,7 +117,7 @@ namespace AvatarOutfitOptimizer.Cleanup
                         {
                             foreach (var c in colliders)
                             {
-                                if (c == collider)
+                                if (object.Equals(c, collider))
                                 {
                                     return true; // Collider is used
                                 }

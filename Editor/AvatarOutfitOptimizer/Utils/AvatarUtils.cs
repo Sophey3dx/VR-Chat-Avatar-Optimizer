@@ -139,8 +139,15 @@ namespace AvatarOutfitOptimizer.Utils
         public static RuntimeAnimatorController GetFXLayer(VRCAvatarDescriptor descriptor)
         {
             if (descriptor == null) return null;
-            return descriptor.baseAnimationLayers
-                .FirstOrDefault(layer => layer.type == VRCAvatarDescriptor.AnimLayerType.FX)?.animatorController;
+            
+            foreach (var layer in descriptor.baseAnimationLayers)
+            {
+                if (layer.type == VRCAvatarDescriptor.AnimLayerType.FX)
+                {
+                    return layer.animatorController;
+                }
+            }
+            return null;
         }
     }
 }
