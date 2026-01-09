@@ -15,7 +15,8 @@ namespace AvatarOutfitOptimizer
     public class AvatarOptimizerWindow : EditorWindow
     {
         private GameObject selectedAvatar;
-        private AvatarSnapshot currentSnapshot;
+        private AvatarSnapshot fullSnapshot;    // All objects (before optimization)
+        private AvatarSnapshot activeSnapshot;  // Active objects only (after optimization)
         private OptimizationReport currentReport;
         
         // Analysis results
@@ -171,7 +172,7 @@ namespace AvatarOutfitOptimizer
 
         private void DrawAnalysisTab()
         {
-            if (currentSnapshot == null)
+            if (fullSnapshot == null || activeSnapshot == null)
             {
                 EditorGUILayout.HelpBox(
                     "Please capture a snapshot first to see the analysis.",
@@ -191,12 +192,12 @@ namespace AvatarOutfitOptimizer
 
             if (cleanupAnalysis == null)
             {
-                // Generate analysis
+                // Generate analysis using full snapshot for context
                 cleanupAnalysis = CleanupAnalysis.CreateFromResults(
                     animatorAnalysis,
                     menuAnalysis,
                     physBoneAnalysis,
-                    currentSnapshot);
+                    fullSnapshot);
             }
 
             analysisScrollPosition = EditorGUILayout.BeginScrollView(analysisScrollPosition);
@@ -266,18 +267,20 @@ namespace AvatarOutfitOptimizer
             }
             GUI.enabled = true;
 
-            if (currentSnapshot != null)
+            if (fullSnapshot != null && activeSnapshot != null)
             {
+                // Show before/after comparison
                 EditorGUILayout.HelpBox(
-                    $"Snapshot captured: {currentSnapshot.MeshCount} meshes, " +
-                    $"{currentSnapshot.MaterialCount} materials, " +
-                    $"{currentSnapshot.BoneCount} bones",
+                    $"Full Avatar: {fullSnapshot.MeshCount} meshes, {fullSnapshot.BoneCount} bones, {fullSnapshot.PhysBoneCount} PhysBones\n" +
+                    $"Active Only: {activeSnapshot.MeshCount} meshes, {activeSnapshot.BoneCount} bones, {activeSnapshot.PhysBoneCount} PhysBones\n" +
+                    $"Potential Reduction: {fullSnapshot.MeshCount - activeSnapshot.MeshCount} meshes, {fullSnapshot.BoneCount - activeSnapshot.BoneCount} bones",
                     MessageType.Info);
             }
             else
             {
                 EditorGUILayout.HelpBox(
-                    "Please capture a snapshot first.",
+                    "Please capture a snapshot first.\n" +
+                    "Make sure to enable only the objects you want to KEEP before capturing.",
                     MessageType.Warning);
             }
 
@@ -338,7 +341,7 @@ namespace AvatarOutfitOptimizer
             EditorGUILayout.Space(10);
 
             // Optimization Button
-            GUI.enabled = currentSnapshot != null && selectedAvatar != null;
+            GUI.enabled = fullSnapshot != null && activeSnapshot != null && selectedAvatar != null;
             if (GUILayout.Button(
                 dryRun ? "Preview Optimization" : "Create Optimized Avatar",
                 GUILayout.Height(40)))
@@ -373,11 +376,15 @@ namespace AvatarOutfitOptimizer
                 return;
             }
 
-            currentSnapshot = AvatarSnapshot.Capture(selectedAvatar);
+            // Capture FULL snapshot (all objects including inactive) - this is "BEFORE"
+            fullSnapshot = AvatarSnapshot.Capture(selectedAvatar, includeInactive: true);
             
-            if (currentSnapshot != null)
+            // Capture ACTIVE snapshot (only active objects) - this is "AFTER"
+            activeSnapshot = AvatarSnapshot.Capture(selectedAvatar, includeInactive: false);
+            
+            if (fullSnapshot != null && activeSnapshot != null)
             {
-                // Perform analysis
+                // Perform analysis using full snapshot
                 AnalyzeAvatar();
                 
                 // Generate cleanup analysis
@@ -385,17 +392,27 @@ namespace AvatarOutfitOptimizer
                     animatorAnalysis,
                     menuAnalysis,
                     physBoneAnalysis,
-                    currentSnapshot);
+                    fullSnapshot);
+                
+                int removedMeshes = fullSnapshot.MeshCount - activeSnapshot.MeshCount;
+                int removedBones = fullSnapshot.BoneCount - activeSnapshot.BoneCount;
+                int removedPhysBones = fullSnapshot.PhysBoneCount - activeSnapshot.PhysBoneCount;
                 
                 EditorUtility.DisplayDialog(
                     "Snapshot Captured",
-                    $"Successfully captured snapshot:\n" +
-                    $"- {currentSnapshot.MeshCount} meshes\n" +
-                    $"- {currentSnapshot.MaterialCount} materials\n" +
-                    $"- {currentSnapshot.BoneCount} bones\n" +
-                    $"- {currentSnapshot.PhysBoneCount} PhysBones\n" +
-                    $"- {currentSnapshot.ParameterCount} parameters\n\n" +
-                    $"Switch to the 'Analysis' tab to see what can be cleaned up.",
+                    $"Full Avatar (Before):\n" +
+                    $"- {fullSnapshot.MeshCount} meshes\n" +
+                    $"- {fullSnapshot.BoneCount} bones\n" +
+                    $"- {fullSnapshot.PhysBoneCount} PhysBones\n\n" +
+                    $"Active Only (After Cleanup):\n" +
+                    $"- {activeSnapshot.MeshCount} meshes\n" +
+                    $"- {activeSnapshot.BoneCount} bones\n" +
+                    $"- {activeSnapshot.PhysBoneCount} PhysBones\n\n" +
+                    $"Potential Reduction:\n" +
+                    $"- {removedMeshes} meshes\n" +
+                    $"- {removedBones} bones\n" +
+                    $"- {removedPhysBones} PhysBones\n\n" +
+                    $"Switch to 'Analysis' or 'Optimize' tab for details.",
                     "OK");
             }
             else
@@ -409,11 +426,11 @@ namespace AvatarOutfitOptimizer
 
         private void AnalyzeAvatar()
         {
-            if (selectedAvatar == null || currentSnapshot == null) return;
+            if (selectedAvatar == null || fullSnapshot == null) return;
 
-            // Scan usage
+            // Scan usage using full snapshot
             usageScanner = new UsageScanner();
-            usageScanner.Scan(selectedAvatar, currentSnapshot);
+            usageScanner.Scan(selectedAvatar, fullSnapshot);
 
             // Analyze menu
             var descriptor = AvatarUtils.GetAvatarDescriptor(selectedAvatar);
@@ -423,9 +440,9 @@ namespace AvatarOutfitOptimizer
                 if (menu != null)
                 {
                     var menuAnalyzer = new MenuAnalyzer();
-                    var validParams = new HashSet<string>(currentSnapshot.ExpressionParameterNames);
-                    validParams.UnionWith(currentSnapshot.AnimatorParameterNames);
-                    menuAnalysis = menuAnalyzer.Analyze(menu, currentSnapshot, validParams);
+                    var validParams = new HashSet<string>(fullSnapshot.ExpressionParameterNames);
+                    validParams.UnionWith(fullSnapshot.AnimatorParameterNames);
+                    menuAnalysis = menuAnalyzer.Analyze(menu, fullSnapshot, validParams);
                 }
 
                 // Analyze animator
@@ -437,17 +454,17 @@ namespace AvatarOutfitOptimizer
                 }
             }
 
-            // Analyze PhysBones
+            // Analyze PhysBones using full snapshot
             var physBoneAnalyzer = new PhysBoneAnalyzer();
             physBoneAnalysis = physBoneAnalyzer.Analyze(
                 selectedAvatar,
-                currentSnapshot,
+                fullSnapshot,
                 aggressiveBonePruning);
         }
 
         private void PerformOptimization()
         {
-            if (selectedAvatar == null || currentSnapshot == null)
+            if (selectedAvatar == null || fullSnapshot == null || activeSnapshot == null)
             {
                 EditorUtility.DisplayDialog(
                     "Error",
@@ -475,7 +492,7 @@ namespace AvatarOutfitOptimizer
                 // Create optimized avatar (or preview in dry run)
                 GameObject optimizedAvatar = coordinator.CreateOptimizedAvatar(
                     selectedAvatar,
-                    currentSnapshot,
+                    activeSnapshot,  // Use active snapshot as the target state
                     usageScanner,
                     menuAnalysis,
                     animatorAnalysis,
@@ -488,26 +505,27 @@ namespace AvatarOutfitOptimizer
                     cleanupMenu,
                     cleanupPhysBones);
 
-                // Capture after snapshot if not dry run
+                // For dry run, use the pre-captured activeSnapshot as the "after" state
+                // For actual optimization, capture a new snapshot from the optimized avatar
                 AvatarSnapshot afterSnapshot = null;
                 if (!dryRun && optimizedAvatar != null)
                 {
-                    afterSnapshot = AvatarSnapshot.Capture(optimizedAvatar);
+                    // Capture actual result from optimized avatar
+                    afterSnapshot = AvatarSnapshot.Capture(optimizedAvatar, includeInactive: false);
                 }
                 else if (dryRun)
                 {
-                    // For dry run, create a simulated after snapshot
-                    // This is a simplified version - in production you'd simulate the cleanup
-                    afterSnapshot = SimulateAfterSnapshot();
+                    // For dry run, activeSnapshot IS the "after" state
+                    afterSnapshot = activeSnapshot;
                 }
 
-                // Generate report
+                // Generate report comparing FULL (before) with ACTIVE/actual (after)
                 if (afterSnapshot != null)
                 {
-                    var comparison = currentSnapshot.Compare(afterSnapshot);
+                    var comparison = fullSnapshot.Compare(afterSnapshot);
                     currentReport = OptimizationReport.Create(
-                        currentSnapshot,
-                        afterSnapshot,
+                        fullSnapshot,   // Before = full avatar
+                        afterSnapshot,  // After = active only / optimized
                         comparison);
                     
                     reportText = currentReport.GenerateReportText();
@@ -547,150 +565,6 @@ namespace AvatarOutfitOptimizer
             }
         }
 
-        private AvatarSnapshot SimulateAfterSnapshot()
-        {
-            // Create a simulated snapshot for dry run
-            // This estimates what the snapshot would look like after cleanup
-            
-            if (currentSnapshot == null || selectedAvatar == null) return null;
-
-            // Start with copies of all current paths
-            var remainingObjects = new HashSet<string>(currentSnapshot.ActiveGameObjectPaths);
-            var remainingRenderers = new HashSet<string>(currentSnapshot.ActiveRendererPaths);
-            var remainingBones = new HashSet<string>(currentSnapshot.UsedBonePaths);
-            var remainingPhysBones = new HashSet<string>(currentSnapshot.ActivePhysBonePaths);
-            var remainingExpressionParams = new HashSet<string>(currentSnapshot.ExpressionParameterNames);
-            var remainingAnimatorParams = new HashSet<string>(currentSnapshot.AnimatorParameterNames);
-            int remainingMaterials = currentSnapshot.MaterialCount;
-
-            // Object cleanup: Get all objects (including inactive) and determine what would be removed
-            if (cleanupObjects)
-            {
-                // Get ALL objects in the hierarchy
-                var allObjectPaths = AvatarUtils.GetAllGameObjectPaths(selectedAvatar);
-                var activeObjectPaths = new HashSet<string>(currentSnapshot.ActiveGameObjectPaths);
-                
-                // Objects to be removed = all objects - active objects
-                var objectsToRemove = new HashSet<string>(allObjectPaths.Where(p => !activeObjectPaths.Contains(p)));
-                
-                // After cleanup, only active objects remain
-                remainingObjects = activeObjectPaths;
-                
-                // Remove renderers that are on inactive objects
-                var renderersToRemove = new HashSet<string>();
-                foreach (var rendererPath in remainingRenderers)
-                {
-                    // Check if this renderer's parent object is being removed
-                    bool isOnActiveObject = activeObjectPaths.Any(objPath => 
-                        rendererPath == objPath || rendererPath.StartsWith(objPath + "/"));
-                    
-                    if (!isOnActiveObject)
-                    {
-                        renderersToRemove.Add(rendererPath);
-                    }
-                }
-                remainingRenderers.ExceptWith(renderersToRemove);
-                
-                // Remove PhysBones on inactive objects
-                var physBonesToRemove = new HashSet<string>();
-                foreach (var physBonePath in remainingPhysBones)
-                {
-                    bool isOnActiveObject = activeObjectPaths.Any(objPath => 
-                        physBonePath == objPath || physBonePath.StartsWith(objPath + "/"));
-                    
-                    if (!isOnActiveObject)
-                    {
-                        physBonesToRemove.Add(physBonePath);
-                    }
-                }
-                remainingPhysBones.ExceptWith(physBonesToRemove);
-                
-                // Recalculate bones based on remaining renderers
-                // In a real scenario, we would need to scan which bones are used by remaining meshes
-                // For now, we estimate that bones are reduced proportionally
-                if (renderersToRemove.Count > 0 && currentSnapshot.ActiveRendererPaths.Count > 0)
-                {
-                    // Estimate bone reduction based on mesh reduction ratio
-                    float meshRetentionRatio = (float)remainingRenderers.Count / currentSnapshot.ActiveRendererPaths.Count;
-                    int estimatedRemainingBones = Mathf.RoundToInt(currentSnapshot.BoneCount * meshRetentionRatio);
-                    
-                    // Take only the first N bones (simplified estimation)
-                    remainingBones = new HashSet<string>(remainingBones.Take(estimatedRemainingBones));
-                }
-            }
-
-            // PhysBone cleanup from analysis
-            if (cleanupPhysBones && physBoneAnalysis != null)
-            {
-                // Remove PhysBones that were identified as on deleted objects
-                if (physBoneAnalysis.PhysBonesOnDeletedObjects != null)
-                {
-                    foreach (var pb in physBoneAnalysis.PhysBonesOnDeletedObjects)
-                    {
-                        if (pb != null)
-                        {
-                            string path = GetRelativePath(selectedAvatar.transform, pb.transform);
-                            remainingPhysBones.Remove(path);
-                        }
-                    }
-                }
-            }
-
-            // Animator cleanup estimates
-            if (cleanupAnimator && animatorAnalysis != null)
-            {
-                if (animatorAnalysis.UnusedParameters != null)
-                {
-                    foreach (var param in animatorAnalysis.UnusedParameters)
-                    {
-                        remainingAnimatorParams.Remove(param);
-                    }
-                }
-            }
-
-            // Bone pruning (aggressive mode only)
-            if (aggressiveBonePruning && physBoneAnalysis != null && physBoneAnalysis.PrunableBones != null)
-            {
-                foreach (var bone in physBoneAnalysis.PrunableBones)
-                {
-                    if (bone != null)
-                    {
-                        string path = GetRelativePath(selectedAvatar.transform, bone);
-                        remainingBones.Remove(path);
-                    }
-                }
-            }
-
-            // Create simulated snapshot with full path lists
-            return AvatarSnapshot.CreateSimulatedWithPaths(
-                remainingObjects.ToList(),
-                remainingRenderers.ToList(),
-                remainingBones.ToList(),
-                remainingPhysBones.ToList(),
-                remainingExpressionParams.ToList(),
-                remainingAnimatorParams.ToList(),
-                remainingMaterials,
-                currentSnapshot.AvatarFingerprint
-            );
-        }
-
-        private string GetRelativePath(Transform root, Transform target)
-        {
-            if (target == null) return "";
-            if (target == root) return target.name;
-
-            var path = new List<string>();
-            var current = target;
-
-            while (current != null && current != root)
-            {
-                path.Add(current.name);
-                current = current.parent;
-            }
-
-            path.Reverse();
-            return string.Join("/", path);
-        }
     }
 }
 

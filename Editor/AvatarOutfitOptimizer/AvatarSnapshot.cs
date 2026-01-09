@@ -47,7 +47,9 @@ namespace AvatarOutfitOptimizer
         /// <summary>
         /// Creates a snapshot from the current avatar state
         /// </summary>
-        public static AvatarSnapshot Capture(GameObject avatarRoot)
+        /// <param name="avatarRoot">Root GameObject of the avatar</param>
+        /// <param name="includeInactive">If true, includes all objects (for "before" stats). If false, only active objects (for "after" stats).</param>
+        public static AvatarSnapshot Capture(GameObject avatarRoot, bool includeInactive = false)
         {
             if (avatarRoot == null)
             {
@@ -66,25 +68,25 @@ namespace AvatarOutfitOptimizer
 
             try
             {
-                // Capture active GameObjects
-                snapshot.activeGameObjectPaths = AvatarUtils.GetActiveGameObjectPaths(avatarRoot);
+                // Capture GameObjects (all or active only)
+                snapshot.activeGameObjectPaths = AvatarUtils.GetGameObjectPaths(avatarRoot, includeInactive);
 
-                // Capture active SkinnedMeshRenderers
-                var activeRenderers = AvatarUtils.GetActiveSkinnedMeshRenderers(avatarRoot);
-                snapshot.activeRendererPaths = activeRenderers
+                // Capture SkinnedMeshRenderers (all or active only)
+                var renderers = AvatarUtils.GetSkinnedMeshRenderers(avatarRoot, includeInactive);
+                snapshot.activeRendererPaths = renderers
                     .Select(r => GetGameObjectPath(avatarRoot.transform, r.transform))
                     .ToList();
 
-                // Capture used bones
-                var usedBones = AvatarUtils.GetUsedBones(avatarRoot);
+                // Capture used bones (from all or active renderers only)
+                var usedBones = AvatarUtils.GetUsedBones(avatarRoot, includeInactive);
                 snapshot.usedBonePaths = usedBones
                     .Select(b => GetGameObjectPath(avatarRoot.transform, b))
                     .ToList();
 
                 // Capture PhysBones (VRC SDK 3)
-                snapshot.activePhysBonePaths = CapturePhysBones(avatarRoot, avatarRoot.transform);
+                snapshot.activePhysBonePaths = CapturePhysBones(avatarRoot, avatarRoot.transform, includeInactive);
 
-                // Capture Expression Parameters
+                // Capture Expression Parameters (always all - parameters don't have active/inactive state)
                 var expressionParams = AvatarUtils.GetExpressionParameters(descriptor);
                 if (expressionParams != null && expressionParams.parameters != null)
                 {
@@ -94,7 +96,7 @@ namespace AvatarOutfitOptimizer
                         .ToList();
                 }
 
-                // Capture Animator Parameters from FX Layer
+                // Capture Animator Parameters from FX Layer (always all)
                 var fxLayer = AvatarUtils.GetFXLayer(descriptor);
                 if (fxLayer != null)
                 {
@@ -102,21 +104,22 @@ namespace AvatarOutfitOptimizer
                 }
 
                 // Generate avatar fingerprint
-                var materials = SerializationHelper.GetMaterialsFromRenderers(activeRenderers);
+                var materials = SerializationHelper.GetMaterialsFromRenderers(renderers);
                 snapshot.avatarFingerprint = SerializationHelper.GenerateAvatarFingerprint(
-                    activeRenderers,
+                    renderers,
                     usedBones,
                     materials
                 );
 
                 // Capture counts
-                snapshot.meshCount = activeRenderers.Count;
+                snapshot.meshCount = renderers.Count;
                 snapshot.materialCount = materials.Count;
                 snapshot.boneCount = usedBones.Count;
                 snapshot.physBoneCount = snapshot.activePhysBonePaths.Count;
                 snapshot.parameterCount = snapshot.expressionParameterNames.Count + snapshot.animatorParameterNames.Count;
 
-                Debug.Log($"[AvatarOptimizer] Snapshot captured: {snapshot.meshCount} meshes, {snapshot.materialCount} materials, {snapshot.boneCount} bones");
+                string mode = includeInactive ? "full (all objects)" : "active only";
+                Debug.Log($"[AvatarOptimizer] Snapshot captured ({mode}): {snapshot.meshCount} meshes, {snapshot.materialCount} materials, {snapshot.boneCount} bones");
             }
             catch (Exception e)
             {
@@ -240,7 +243,7 @@ namespace AvatarOutfitOptimizer
             return string.Join("/", path);
         }
 
-        private static List<string> CapturePhysBones(GameObject avatarRoot, Transform root)
+        private static List<string> CapturePhysBones(GameObject avatarRoot, Transform root, bool includeInactive = false)
         {
             var physBonePaths = new List<string>();
             
@@ -260,10 +263,14 @@ namespace AvatarOutfitOptimizer
                     if (physBone != null)
                     {
                         var component = physBone as Component;
-                        if (component != null && component.gameObject.activeInHierarchy)
+                        if (component != null)
                         {
-                            string path = GetGameObjectPath(root, component.transform);
-                            physBonePaths.Add(path);
+                            // Include all PhysBones or only those on active GameObjects
+                            if (includeInactive || component.gameObject.activeInHierarchy)
+                            {
+                                string path = GetGameObjectPath(root, component.transform);
+                                physBonePaths.Add(path);
+                            }
                         }
                     }
                 }

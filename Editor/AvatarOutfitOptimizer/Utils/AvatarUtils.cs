@@ -25,9 +25,11 @@ namespace AvatarOutfitOptimizer.Utils
         }
 
         /// <summary>
-        /// Gets all active SkinnedMeshRenderers in the avatar hierarchy
+        /// Gets SkinnedMeshRenderers in the avatar hierarchy
         /// </summary>
-        public static List<SkinnedMeshRenderer> GetActiveSkinnedMeshRenderers(GameObject avatarRoot)
+        /// <param name="avatarRoot">Root GameObject of the avatar</param>
+        /// <param name="includeInactive">If true, includes all renderers. If false, only active and enabled renderers.</param>
+        public static List<SkinnedMeshRenderer> GetSkinnedMeshRenderers(GameObject avatarRoot, bool includeInactive = false)
         {
             var renderers = new List<SkinnedMeshRenderer>();
             if (avatarRoot == null) return renderers;
@@ -35,9 +37,20 @@ namespace AvatarOutfitOptimizer.Utils
             var allRenderers = avatarRoot.GetComponentsInChildren<SkinnedMeshRenderer>(true);
             foreach (var renderer in allRenderers)
             {
-                if (renderer != null && renderer.gameObject.activeInHierarchy && renderer.enabled)
+                if (renderer == null) continue;
+                
+                if (includeInactive)
                 {
+                    // Include all renderers
                     renderers.Add(renderer);
+                }
+                else
+                {
+                    // Only include active and enabled renderers
+                    if (renderer.gameObject.activeInHierarchy && renderer.enabled)
+                    {
+                        renderers.Add(renderer);
+                    }
                 }
             }
             
@@ -45,12 +58,22 @@ namespace AvatarOutfitOptimizer.Utils
         }
 
         /// <summary>
-        /// Gets all bones referenced by active SkinnedMeshRenderers
+        /// Gets all active SkinnedMeshRenderers in the avatar hierarchy (convenience method)
         /// </summary>
-        public static HashSet<Transform> GetUsedBones(GameObject avatarRoot)
+        public static List<SkinnedMeshRenderer> GetActiveSkinnedMeshRenderers(GameObject avatarRoot)
+        {
+            return GetSkinnedMeshRenderers(avatarRoot, includeInactive: false);
+        }
+
+        /// <summary>
+        /// Gets bones referenced by SkinnedMeshRenderers
+        /// </summary>
+        /// <param name="avatarRoot">Root GameObject of the avatar</param>
+        /// <param name="includeInactive">If true, includes bones from all renderers. If false, only from active renderers.</param>
+        public static HashSet<Transform> GetUsedBones(GameObject avatarRoot, bool includeInactive = false)
         {
             var usedBones = new HashSet<Transform>();
-            var renderers = GetActiveSkinnedMeshRenderers(avatarRoot);
+            var renderers = GetSkinnedMeshRenderers(avatarRoot, includeInactive);
             
             foreach (var renderer in renderers)
             {
@@ -70,27 +93,40 @@ namespace AvatarOutfitOptimizer.Utils
         }
 
         /// <summary>
-        /// Gets all active GameObjects in the hierarchy (recursive)
+        /// Gets GameObjects paths in the hierarchy
         /// </summary>
-        public static List<string> GetActiveGameObjectPaths(GameObject root)
+        /// <param name="root">Root GameObject</param>
+        /// <param name="includeInactive">If true, includes all GameObjects. If false, only active ones.</param>
+        public static List<string> GetGameObjectPaths(GameObject root, bool includeInactive = false)
         {
             var paths = new List<string>();
             if (root == null) return paths;
             
-            CollectActivePaths(root, root.transform, paths);
+            if (includeInactive)
+            {
+                CollectAllPaths(root, root.transform, paths);
+            }
+            else
+            {
+                CollectActivePaths(root, root.transform, paths);
+            }
             return paths;
         }
 
         /// <summary>
-        /// Gets ALL GameObjects in the hierarchy (including inactive)
+        /// Gets all active GameObjects in the hierarchy (recursive) - convenience method
+        /// </summary>
+        public static List<string> GetActiveGameObjectPaths(GameObject root)
+        {
+            return GetGameObjectPaths(root, includeInactive: false);
+        }
+
+        /// <summary>
+        /// Gets ALL GameObjects in the hierarchy (including inactive) - convenience method
         /// </summary>
         public static List<string> GetAllGameObjectPaths(GameObject root)
         {
-            var paths = new List<string>();
-            if (root == null) return paths;
-            
-            CollectAllPaths(root, root.transform, paths);
-            return paths;
+            return GetGameObjectPaths(root, includeInactive: true);
         }
 
         private static void CollectActivePaths(GameObject root, Transform current, List<string> paths)
