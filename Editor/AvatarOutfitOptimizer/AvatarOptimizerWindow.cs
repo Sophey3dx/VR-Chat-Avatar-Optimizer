@@ -39,6 +39,11 @@ namespace AvatarOutfitOptimizer
         private bool cleanupAnimator = true;
         private bool cleanupMenu = true;
         private bool cleanupPhysBones = true;
+        private bool cleanupUnusedAssets = false; // Disabled by default - destructive!
+        
+        // Material cleanup
+        private MaterialCleanup materialCleanup;
+        private MaterialCleanup.MaterialAnalysisResult materialAnalysis;
         
         // UI Tabs
         private int selectedTab = 0;
@@ -335,6 +340,27 @@ namespace AvatarOutfitOptimizer
                     "Only use if you understand the risks.",
                     MessageType.Warning);
             }
+
+            EditorGUILayout.Space(5);
+            
+            cleanupUnusedAssets = EditorGUILayout.Toggle(
+                "Delete Unused Materials/Textures",
+                cleanupUnusedAssets);
+            
+            if (cleanupUnusedAssets)
+            {
+                EditorGUILayout.HelpBox(
+                    "⚠️ DESTRUCTIVE: This will DELETE material and texture files from your project! " +
+                    "Only materials/textures used EXCLUSIVELY by removed meshes will be deleted. " +
+                    "This CANNOT be undone - make a backup first!",
+                    MessageType.Error);
+                
+                // Show preview of what would be deleted
+                if (materialAnalysis != null && (materialAnalysis.UnusedMaterials.Count > 0 || materialAnalysis.UnusedTextures.Count > 0))
+                {
+                    EditorGUILayout.LabelField($"Will delete: {materialAnalysis.UnusedMaterials.Count} materials, {materialAnalysis.UnusedTextures.Count} textures", EditorStyles.miniLabel);
+                }
+            }
             
             EditorGUI.indentLevel--;
 
@@ -387,6 +413,10 @@ namespace AvatarOutfitOptimizer
                 // Perform analysis using full snapshot
                 AnalyzeAvatar();
                 
+                // Analyze materials/textures for potential cleanup
+                materialCleanup = new MaterialCleanup();
+                materialAnalysis = materialCleanup.Analyze(selectedAvatar, fullSnapshot, activeSnapshot);
+                
                 // Generate cleanup analysis
                 cleanupAnalysis = CleanupAnalysis.CreateFromResults(
                     animatorAnalysis,
@@ -397,6 +427,14 @@ namespace AvatarOutfitOptimizer
                 int removedMeshes = fullSnapshot.MeshCount - activeSnapshot.MeshCount;
                 int removedBones = fullSnapshot.BoneCount - activeSnapshot.BoneCount;
                 int removedPhysBones = fullSnapshot.PhysBoneCount - activeSnapshot.PhysBoneCount;
+                
+                string materialInfo = "";
+                if (materialAnalysis != null && materialAnalysis.UnusedMaterials.Count > 0)
+                {
+                    materialInfo = $"\nUnused Assets (optional cleanup):\n" +
+                                   $"- {materialAnalysis.UnusedMaterials.Count} materials\n" +
+                                   $"- {materialAnalysis.UnusedTextures.Count} textures\n";
+                }
                 
                 EditorUtility.DisplayDialog(
                     "Snapshot Captured",
@@ -411,8 +449,9 @@ namespace AvatarOutfitOptimizer
                     $"Potential Reduction:\n" +
                     $"- {removedMeshes} meshes\n" +
                     $"- {removedBones} bones\n" +
-                    $"- {removedPhysBones} PhysBones\n\n" +
-                    $"Switch to 'Analysis' or 'Optimize' tab for details.",
+                    $"- {removedPhysBones} PhysBones" +
+                    materialInfo +
+                    $"\nSwitch to 'Analysis' or 'Optimize' tab for details.",
                     "OK");
             }
             else
@@ -531,12 +570,33 @@ namespace AvatarOutfitOptimizer
                     reportText = currentReport.GenerateReportText();
                 }
 
+                // Material/Texture cleanup (if enabled and not dry run)
+                string assetCleanupInfo = "";
+                if (cleanupUnusedAssets && !dryRun && materialCleanup != null && materialAnalysis != null)
+                {
+                    // Confirm before deleting
+                    bool confirmDelete = EditorUtility.DisplayDialog(
+                        "Delete Unused Assets?",
+                        $"This will PERMANENTLY DELETE:\n" +
+                        $"- {materialAnalysis.UnusedMaterials.Count} materials\n" +
+                        $"- {materialAnalysis.UnusedTextures.Count} textures\n\n" +
+                        "This cannot be undone! Are you sure?",
+                        "Delete",
+                        "Skip");
+                    
+                    if (confirmDelete)
+                    {
+                        materialCleanup.DeleteUnusedAssets(materialAnalysis);
+                        assetCleanupInfo = $"\n\nDeleted {materialAnalysis.UnusedMaterials.Count} materials and {materialAnalysis.UnusedTextures.Count} textures.";
+                    }
+                }
+
                 if (!dryRun && optimizedAvatar != null)
                 {
                     EditorUtility.DisplayDialog(
                         "Optimization Complete",
                         $"Optimized avatar created: {optimizedAvatar.name}\n\n" +
-                        $"Check the report below for details.",
+                        $"Check the report below for details." + assetCleanupInfo,
                         "OK");
                     
                     // Select the new avatar
@@ -544,10 +604,18 @@ namespace AvatarOutfitOptimizer
                 }
                 else if (dryRun)
                 {
+                    string assetPreview = "";
+                    if (cleanupUnusedAssets && materialAnalysis != null)
+                    {
+                        assetPreview = $"\n\nAsset Cleanup Preview:\n" +
+                                       $"- {materialAnalysis.UnusedMaterials.Count} materials would be deleted\n" +
+                                       $"- {materialAnalysis.UnusedTextures.Count} textures would be deleted";
+                    }
+                    
                     EditorUtility.DisplayDialog(
                         "Dry Run Complete",
                         "Preview generated. Check the report below.\n\n" +
-                        "Disable 'Dry Run' to create the optimized avatar.",
+                        "Disable 'Dry Run' to create the optimized avatar." + assetPreview,
                         "OK");
                 }
             }

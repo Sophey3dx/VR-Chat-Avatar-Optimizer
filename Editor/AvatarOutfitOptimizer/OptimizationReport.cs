@@ -7,6 +7,36 @@ using UnityEngine;
 namespace AvatarOutfitOptimizer
 {
     /// <summary>
+    /// VRChat Performance Rank Limits (approximate values based on VRChat documentation)
+    /// These may change - always verify with official VRChat documentation
+    /// </summary>
+    public static class VRChatLimits
+    {
+        // Excellent/Very Good limits
+        public const int ExcellentMeshes = 1;
+        public const int ExcellentMaterials = 4;
+        public const int ExcellentBones = 75;
+        public const int ExcellentPhysBones = 4;
+        public const int ExcellentPhysBoneTransforms = 16;
+        
+        // Good limits
+        public const int GoodMeshes = 16;
+        public const int GoodMaterials = 32;
+        public const int GoodBones = 400;
+        public const int GoodPhysBones = 32;
+        public const int GoodPhysBoneTransforms = 256;
+        
+        // Medium limits
+        public const int MediumMeshes = 32;
+        public const int MediumMaterials = 64;
+        public const int MediumBones = 400;
+        public const int MediumPhysBones = 64;
+        public const int MediumPhysBoneTransforms = 512;
+        
+        // Poor = anything above Medium limits
+    }
+
+    /// <summary>
     /// Performance tier estimation (NOT guaranteed VRChat rank)
     /// </summary>
     public enum EstimatedPerformanceTier
@@ -63,13 +93,13 @@ namespace AvatarOutfitOptimizer
             sb.AppendLine("Actual rank may vary. Always test your avatar!");
             sb.AppendLine();
 
-            // Metrics comparison
-            sb.AppendLine("Performance Metrics:");
-            sb.AppendLine($"  Meshes:      {BeforeMeshCount} → {AfterMeshCount} ({(AfterMeshCount - BeforeMeshCount):+0;-#})");
-            sb.AppendLine($"  Materials:   {BeforeMaterialCount} → {AfterMaterialCount} ({(AfterMaterialCount - BeforeMaterialCount):+0;-#})");
-            sb.AppendLine($"  Bones:        {BeforeBoneCount} → {AfterBoneCount} ({(AfterBoneCount - BeforeBoneCount):+0;-#})");
-            sb.AppendLine($"  PhysBones:    {BeforePhysBoneCount} → {AfterPhysBoneCount} ({(AfterPhysBoneCount - BeforePhysBoneCount):+0;-#})");
-            sb.AppendLine($"  Parameters:   {BeforeParameterCount} → {AfterParameterCount} ({(AfterParameterCount - BeforeParameterCount):+0;-#})");
+            // Metrics comparison with VRChat limits
+            sb.AppendLine("Performance Metrics (Current → After | Good Limit):");
+            sb.AppendLine($"  Meshes:      {BeforeMeshCount,3} → {AfterMeshCount,3} ({(AfterMeshCount - BeforeMeshCount):+0;-#}) | Good: {VRChatLimits.GoodMeshes} {GetLimitStatus(AfterMeshCount, VRChatLimits.GoodMeshes)}");
+            sb.AppendLine($"  Materials:   {BeforeMaterialCount,3} → {AfterMaterialCount,3} ({(AfterMaterialCount - BeforeMaterialCount):+0;-#}) | Good: {VRChatLimits.GoodMaterials} {GetLimitStatus(AfterMaterialCount, VRChatLimits.GoodMaterials)}");
+            sb.AppendLine($"  Bones:       {BeforeBoneCount,3} → {AfterBoneCount,3} ({(AfterBoneCount - BeforeBoneCount):+0;-#}) | Good: {VRChatLimits.GoodBones} {GetLimitStatus(AfterBoneCount, VRChatLimits.GoodBones)}");
+            sb.AppendLine($"  PhysBones:   {BeforePhysBoneCount,3} → {AfterPhysBoneCount,3} ({(AfterPhysBoneCount - BeforePhysBoneCount):+0;-#}) | Good: {VRChatLimits.GoodPhysBones} {GetLimitStatus(AfterPhysBoneCount, VRChatLimits.GoodPhysBones)}");
+            sb.AppendLine($"  Parameters:  {BeforeParameterCount,3} → {AfterParameterCount,3} ({(AfterParameterCount - BeforeParameterCount):+0;-#})");
             sb.AppendLine();
 
             // Avatar Fingerprint
@@ -140,7 +170,20 @@ namespace AvatarOutfitOptimizer
         }
 
         /// <summary>
-        /// Estimates performance tier based on metrics
+        /// Returns a status indicator comparing value to limit
+        /// </summary>
+        private static string GetLimitStatus(int value, int limit)
+        {
+            if (value <= limit)
+                return "✓";
+            else if (value <= limit * 1.5)
+                return "⚠";
+            else
+                return "✗";
+        }
+
+        /// <summary>
+        /// Estimates performance tier based on metrics using VRChat limits
         /// Uses heuristics - NOT guaranteed VRChat rank
         /// </summary>
         public static EstimatedPerformanceTier EstimatePerformanceTier(
@@ -150,39 +193,36 @@ namespace AvatarOutfitOptimizer
             int physBoneCount,
             int parameterCount)
         {
-            // Heuristic-based estimation
-            // These thresholds are approximate and may not match actual VRChat ranking
+            // Check against VRChat limits
+            // Avatar rank is determined by the WORST category
             
-            int score = 0;
-
-            // Mesh scoring (lower is better)
-            if (meshCount <= 1) score += 3;
-            else if (meshCount <= 2) score += 2;
-            else if (meshCount <= 3) score += 1;
-
-            // Material scoring
-            if (materialCount <= 1) score += 3;
-            else if (materialCount <= 2) score += 2;
-            else if (materialCount <= 3) score += 1;
-
-            // Bone scoring
-            if (boneCount <= 75) score += 3;
-            else if (boneCount <= 150) score += 2;
-            else if (boneCount <= 300) score += 1;
-
-            // PhysBone scoring
-            if (physBoneCount <= 4) score += 2;
-            else if (physBoneCount <= 8) score += 1;
-
-            // Parameter scoring (memory usage)
-            int parameterMemory = parameterCount * 4; // Approximate bytes per parameter
-            if (parameterMemory <= 64) score += 2;
-            else if (parameterMemory <= 128) score += 1;
-
-            // Convert score to tier
-            if (score >= 12) return EstimatedPerformanceTier.Excellent;
-            if (score >= 8) return EstimatedPerformanceTier.Good;
-            if (score >= 4) return EstimatedPerformanceTier.Medium;
+            // Check for Excellent tier
+            bool isExcellent = 
+                meshCount <= VRChatLimits.ExcellentMeshes &&
+                materialCount <= VRChatLimits.ExcellentMaterials &&
+                boneCount <= VRChatLimits.ExcellentBones &&
+                physBoneCount <= VRChatLimits.ExcellentPhysBones;
+            
+            if (isExcellent) return EstimatedPerformanceTier.Excellent;
+            
+            // Check for Good tier
+            bool isGood = 
+                meshCount <= VRChatLimits.GoodMeshes &&
+                materialCount <= VRChatLimits.GoodMaterials &&
+                boneCount <= VRChatLimits.GoodBones &&
+                physBoneCount <= VRChatLimits.GoodPhysBones;
+            
+            if (isGood) return EstimatedPerformanceTier.Good;
+            
+            // Check for Medium tier
+            bool isMedium = 
+                meshCount <= VRChatLimits.MediumMeshes &&
+                materialCount <= VRChatLimits.MediumMaterials &&
+                boneCount <= VRChatLimits.MediumBones &&
+                physBoneCount <= VRChatLimits.MediumPhysBones;
+            
+            if (isMedium) return EstimatedPerformanceTier.Medium;
+            
             return EstimatedPerformanceTier.Poor;
         }
 
@@ -246,22 +286,36 @@ namespace AvatarOutfitOptimizer
         {
             if (report.AfterSnapshot == null) return;
 
-            // Warn if still high bone count
-            if (report.AfterBoneCount > 300)
+            // Warn if bone count exceeds Good limit
+            if (report.AfterBoneCount > VRChatLimits.GoodBones)
             {
-                report.Warnings.Add($"High bone count ({report.AfterBoneCount}). Consider reducing mesh complexity.");
+                report.Warnings.Add($"Bone count ({report.AfterBoneCount}) exceeds Good limit ({VRChatLimits.GoodBones}). This cannot be automatically reduced - bones are shared across meshes.");
             }
 
-            // Warn if still high PhysBone count
-            if (report.AfterPhysBoneCount > 8)
+            // Warn if PhysBone count exceeds Good limit
+            if (report.AfterPhysBoneCount > VRChatLimits.GoodPhysBones)
             {
-                report.Warnings.Add($"High PhysBone count ({report.AfterPhysBoneCount}). Consider consolidating PhysBones.");
+                report.Warnings.Add($"PhysBone count ({report.AfterPhysBoneCount}) exceeds Good limit ({VRChatLimits.GoodPhysBones}). Disable unused outfit PhysBones.");
             }
 
-            // Warn if parameter count is high
-            if (report.AfterParameterCount > 32)
+            // Warn if mesh count exceeds Good limit
+            if (report.AfterMeshCount > VRChatLimits.GoodMeshes)
             {
-                report.Warnings.Add($"High parameter count ({report.AfterParameterCount}). Consider reducing Expression Parameters.");
+                report.Warnings.Add($"Mesh count ({report.AfterMeshCount}) exceeds Good limit ({VRChatLimits.GoodMeshes}). Consider merging meshes.");
+            }
+
+            // Warn if material count exceeds Good limit
+            if (report.AfterMaterialCount > VRChatLimits.GoodMaterials)
+            {
+                report.Warnings.Add($"Material count ({report.AfterMaterialCount}) exceeds Good limit ({VRChatLimits.GoodMaterials}). Consider texture atlasing.");
+            }
+
+            // Warn if bone count didn't change despite mesh reduction (shared skeleton)
+            if (report.BeforeBoneCount == report.AfterBoneCount && 
+                report.BeforeMeshCount > report.AfterMeshCount &&
+                report.AfterBoneCount > VRChatLimits.GoodBones)
+            {
+                report.Warnings.Add("Bone count unchanged despite mesh reduction. All meshes share the same skeleton - bone reduction requires external tools like Blender.");
             }
 
             // Warn if tier didn't improve
@@ -275,25 +329,34 @@ namespace AvatarOutfitOptimizer
         {
             if (report.AfterSnapshot == null) return;
 
-            // Recommendations based on current state
-            if (report.AfterMeshCount > 1)
+            // Recommendations based on current state vs VRChat limits
+            if (report.AfterMeshCount > VRChatLimits.GoodMeshes)
             {
-                report.Recommendations.Add("Consider merging meshes to reduce draw calls.");
+                report.Recommendations.Add($"Merge meshes to get under {VRChatLimits.GoodMeshes} for Good rank.");
             }
 
-            if (report.AfterMaterialCount > 1)
+            if (report.AfterMaterialCount > VRChatLimits.GoodMaterials)
             {
-                report.Recommendations.Add("Consider using texture atlasing to reduce material count.");
+                report.Recommendations.Add($"Use texture atlasing to get under {VRChatLimits.GoodMaterials} materials for Good rank.");
             }
 
-            if (report.AfterBoneCount > 150)
+            if (report.AfterBoneCount > VRChatLimits.GoodBones)
             {
-                report.Recommendations.Add("Consider using mesh decimation or LODs to reduce bone count.");
+                report.Recommendations.Add($"Bone count ({report.AfterBoneCount}) exceeds Good limit ({VRChatLimits.GoodBones}). Use Blender to remove unused bones from the armature.");
+            }
+
+            if (report.AfterPhysBoneCount > VRChatLimits.GoodPhysBones)
+            {
+                report.Recommendations.Add($"Reduce PhysBones from {report.AfterPhysBoneCount} to under {VRChatLimits.GoodPhysBones} by disabling outfit physics you don't need.");
             }
 
             if (report.AfterTier == EstimatedPerformanceTier.Excellent)
             {
-                report.Recommendations.Add("Avatar is well optimized! Test in VRChat to verify actual rank.");
+                report.Recommendations.Add("Avatar meets Excellent tier limits! Test in VRChat to verify actual rank.");
+            }
+            else if (report.AfterTier == EstimatedPerformanceTier.Good)
+            {
+                report.Recommendations.Add("Avatar meets Good tier limits. Test in VRChat to verify actual rank.");
             }
             else
             {

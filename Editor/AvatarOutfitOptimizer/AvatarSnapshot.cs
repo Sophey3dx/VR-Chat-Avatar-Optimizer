@@ -257,6 +257,9 @@ namespace AvatarOutfitOptimizer
 
             if (physBoneType != null)
             {
+                // Get rootTransform property for checking if PhysBone's target is active
+                var rootTransformProperty = physBoneType.GetProperty("rootTransform");
+                
                 var allPhysBones = avatarRoot.GetComponentsInChildren(physBoneType, true);
                 foreach (var physBone in allPhysBones)
                 {
@@ -265,8 +268,29 @@ namespace AvatarOutfitOptimizer
                         var component = physBone as Component;
                         if (component != null)
                         {
-                            // Include all PhysBones or only those on active GameObjects
-                            if (includeInactive || component.gameObject.activeInHierarchy)
+                            bool isPhysBoneRelevant = true;
+                            
+                            if (!includeInactive)
+                            {
+                                // Check 1: Is the PhysBone's own GameObject active?
+                                isPhysBoneRelevant = component.gameObject.activeInHierarchy;
+                                
+                                // Check 2: Is the PhysBone's rootTransform (target bone) active?
+                                if (isPhysBoneRelevant && rootTransformProperty != null)
+                                {
+                                    var rootTransform = rootTransformProperty.GetValue(physBone) as Transform;
+                                    // If rootTransform is null, PhysBone uses its own transform
+                                    if (rootTransform == null)
+                                    {
+                                        rootTransform = component.transform;
+                                    }
+                                    
+                                    // PhysBone is only relevant if its target bone is active
+                                    isPhysBoneRelevant = rootTransform.gameObject.activeInHierarchy;
+                                }
+                            }
+                            
+                            if (includeInactive || isPhysBoneRelevant)
                             {
                                 string path = GetGameObjectPath(root, component.transform);
                                 physBonePaths.Add(path);
