@@ -13,7 +13,15 @@ A production-ready Unity Editor Tool for VRChat avatar creators that automatical
 
 ## Installation
 
-### From GitHub (Recommended)
+### Method 1: VCC Repository (One-Click)
+
+1. Open VCC (VRChat Creator Companion)
+2. Go to **Settings** → **Repositories**
+3. Click **"Add Repository"**
+4. Enter: `https://raw.githubusercontent.com/Sophey3dx/VR-Chat-Avatar-Optimizer/main/index.json`
+5. The package will appear in your Packages list
+
+### Method 2: Unity Package Manager
 
 1. Open your VRChat project in Unity (via VCC)
 2. Go to: `Window > Package Manager`
@@ -21,7 +29,7 @@ A production-ready Unity Editor Tool for VRChat avatar creators that automatical
 4. Enter: `https://github.com/Sophey3dx/VR-Chat-Avatar-Optimizer.git`
 5. Click **"Add"**
 
-### Alternative: manifest.json
+### Method 3: manifest.json
 
 Add to your `Packages/manifest.json`:
 ```json
@@ -48,7 +56,3 @@ Add to your `Packages/manifest.json`:
 
 - Unity 2022.3.22f1
 - VRChat SDK 3 (Avatars)
-
-## License
-
-See repository for license information.
