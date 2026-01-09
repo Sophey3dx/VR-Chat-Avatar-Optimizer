@@ -1,13 +1,14 @@
 {
   "name": "Sophey3dx Packages",
   "author": "Sophey3dx",
+  "url": "https://github.com/Sophey3dx",
   "packages": [
     {
       "name": "com.vrchat.avatar-optimizer",
       "displayName": "VRChat Avatar Optimizer",
       "version": "1.0.0",
-      "unity": "2022.3",
-      "description": "Production-ready Unity Editor Tool for automatically optimizing VRChat avatars.",
+      "unity": "2022.3.22f1",
+      "description": "Production-ready Unity Editor Tool for automatically optimizing VRChat avatars. Analyzes current avatar state and creates optimized duplicate variants while preserving avatar integrity.",
       "author": {
         "name": "Sophey3dx",
         "url": "https://github.com/Sophey3dx"
