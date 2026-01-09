@@ -1,7 +1,7 @@
 {
   "name": "com.sophey3dx.avatar-optimizer",
   "displayName": "VRChat Avatar Optimizer",
-  "version": "1.0.4",
+  "version": "1.0.5",
   "unity": "2019.4",
   "description": "Production-ready Unity Editor Tool for automatically optimizing VRChat avatars. Analyzes current avatar state and creates optimized duplicate variants while preserving avatar integrity.",
   "author": {
