@@ -81,6 +81,18 @@ namespace AvatarOutfitOptimizer.Utils
             return paths;
         }
 
+        /// <summary>
+        /// Gets ALL GameObjects in the hierarchy (including inactive)
+        /// </summary>
+        public static List<string> GetAllGameObjectPaths(GameObject root)
+        {
+            var paths = new List<string>();
+            if (root == null) return paths;
+            
+            CollectAllPaths(root, root.transform, paths);
+            return paths;
+        }
+
         private static void CollectActivePaths(GameObject root, Transform current, List<string> paths)
         {
             if (current == null) return;
@@ -94,6 +106,19 @@ namespace AvatarOutfitOptimizer.Utils
                 {
                     CollectActivePaths(root, child, paths);
                 }
+            }
+        }
+
+        private static void CollectAllPaths(GameObject root, Transform current, List<string> paths)
+        {
+            if (current == null) return;
+            
+            string path = GetRelativePath(root.transform, current);
+            paths.Add(path);
+            
+            foreach (Transform child in current)
+            {
+                CollectAllPaths(root, child, paths);
             }
         }
 

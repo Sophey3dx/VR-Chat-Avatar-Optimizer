@@ -128,7 +128,7 @@ namespace AvatarOutfitOptimizer
         }
 
         /// <summary>
-        /// Creates a simulated snapshot with estimated values for dry run mode
+        /// Creates a simulated snapshot with estimated values for dry run mode (simple version)
         /// </summary>
         public static AvatarSnapshot CreateSimulated(
             int meshCount,
@@ -145,6 +145,52 @@ namespace AvatarOutfitOptimizer
             snapshot.physBoneCount = Math.Max(0, physBoneCount);
             snapshot.parameterCount = Math.Max(0, parameterCount);
             snapshot.avatarFingerprint = fingerprint + "_simulated";
+            return snapshot;
+        }
+
+        /// <summary>
+        /// Creates a simulated snapshot with full path lists for accurate comparison
+        /// </summary>
+        public static AvatarSnapshot CreateSimulatedWithPaths(
+            List<string> remainingGameObjectPaths,
+            List<string> remainingRendererPaths,
+            List<string> remainingBonePaths,
+            List<string> remainingPhysBonePaths,
+            List<string> remainingExpressionParams,
+            List<string> remainingAnimatorParams,
+            int materialCount,
+            string fingerprint)
+        {
+            var snapshot = new AvatarSnapshot();
+            
+            // Copy lists to avoid reference issues
+            snapshot.activeGameObjectPaths = remainingGameObjectPaths != null 
+                ? new List<string>(remainingGameObjectPaths) 
+                : new List<string>();
+            snapshot.activeRendererPaths = remainingRendererPaths != null 
+                ? new List<string>(remainingRendererPaths) 
+                : new List<string>();
+            snapshot.usedBonePaths = remainingBonePaths != null 
+                ? new List<string>(remainingBonePaths) 
+                : new List<string>();
+            snapshot.activePhysBonePaths = remainingPhysBonePaths != null 
+                ? new List<string>(remainingPhysBonePaths) 
+                : new List<string>();
+            snapshot.expressionParameterNames = remainingExpressionParams != null 
+                ? new List<string>(remainingExpressionParams) 
+                : new List<string>();
+            snapshot.animatorParameterNames = remainingAnimatorParams != null 
+                ? new List<string>(remainingAnimatorParams) 
+                : new List<string>();
+            
+            // Calculate counts from lists
+            snapshot.meshCount = snapshot.activeRendererPaths.Count;
+            snapshot.materialCount = Math.Max(0, materialCount);
+            snapshot.boneCount = snapshot.usedBonePaths.Count;
+            snapshot.physBoneCount = snapshot.activePhysBonePaths.Count;
+            snapshot.parameterCount = snapshot.expressionParameterNames.Count + snapshot.animatorParameterNames.Count;
+            snapshot.avatarFingerprint = fingerprint + "_simulated";
+            
             return snapshot;
         }
 

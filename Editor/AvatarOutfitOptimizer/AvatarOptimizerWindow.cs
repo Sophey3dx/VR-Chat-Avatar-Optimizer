@@ -552,20 +552,88 @@ namespace AvatarOutfitOptimizer
             // Create a simulated snapshot for dry run
             // This estimates what the snapshot would look like after cleanup
             
-            if (currentSnapshot == null) return null;
+            if (currentSnapshot == null || selectedAvatar == null) return null;
 
-            // Calculate estimated removals based on analysis and enabled cleanup areas
-            int removedMeshes = 0;
-            int removedMaterials = 0;
-            int removedBones = 0;
-            int removedPhysBones = 0;
-            int removedParams = 0;
+            // Start with copies of all current paths
+            var remainingObjects = new HashSet<string>(currentSnapshot.ActiveGameObjectPaths);
+            var remainingRenderers = new HashSet<string>(currentSnapshot.ActiveRendererPaths);
+            var remainingBones = new HashSet<string>(currentSnapshot.UsedBonePaths);
+            var remainingPhysBones = new HashSet<string>(currentSnapshot.ActivePhysBonePaths);
+            var remainingExpressionParams = new HashSet<string>(currentSnapshot.ExpressionParameterNames);
+            var remainingAnimatorParams = new HashSet<string>(currentSnapshot.AnimatorParameterNames);
+            int remainingMaterials = currentSnapshot.MaterialCount;
 
-            // Object cleanup estimates
+            // Object cleanup: Get all objects (including inactive) and determine what would be removed
             if (cleanupObjects)
             {
-                // Inactive renderers would be removed
-                // This is already reflected in the snapshot (only active renderers counted)
+                // Get ALL objects in the hierarchy
+                var allObjectPaths = AvatarUtils.GetAllGameObjectPaths(selectedAvatar);
+                var activeObjectPaths = new HashSet<string>(currentSnapshot.ActiveGameObjectPaths);
+                
+                // Objects to be removed = all objects - active objects
+                var objectsToRemove = new HashSet<string>(allObjectPaths.Where(p => !activeObjectPaths.Contains(p)));
+                
+                // After cleanup, only active objects remain
+                remainingObjects = activeObjectPaths;
+                
+                // Remove renderers that are on inactive objects
+                var renderersToRemove = new HashSet<string>();
+                foreach (var rendererPath in remainingRenderers)
+                {
+                    // Check if this renderer's parent object is being removed
+                    bool isOnActiveObject = activeObjectPaths.Any(objPath => 
+                        rendererPath == objPath || rendererPath.StartsWith(objPath + "/"));
+                    
+                    if (!isOnActiveObject)
+                    {
+                        renderersToRemove.Add(rendererPath);
+                    }
+                }
+                remainingRenderers.ExceptWith(renderersToRemove);
+                
+                // Remove PhysBones on inactive objects
+                var physBonesToRemove = new HashSet<string>();
+                foreach (var physBonePath in remainingPhysBones)
+                {
+                    bool isOnActiveObject = activeObjectPaths.Any(objPath => 
+                        physBonePath == objPath || physBonePath.StartsWith(objPath + "/"));
+                    
+                    if (!isOnActiveObject)
+                    {
+                        physBonesToRemove.Add(physBonePath);
+                    }
+                }
+                remainingPhysBones.ExceptWith(physBonesToRemove);
+                
+                // Recalculate bones based on remaining renderers
+                // In a real scenario, we would need to scan which bones are used by remaining meshes
+                // For now, we estimate that bones are reduced proportionally
+                if (renderersToRemove.Count > 0 && currentSnapshot.ActiveRendererPaths.Count > 0)
+                {
+                    // Estimate bone reduction based on mesh reduction ratio
+                    float meshRetentionRatio = (float)remainingRenderers.Count / currentSnapshot.ActiveRendererPaths.Count;
+                    int estimatedRemainingBones = Mathf.RoundToInt(currentSnapshot.BoneCount * meshRetentionRatio);
+                    
+                    // Take only the first N bones (simplified estimation)
+                    remainingBones = new HashSet<string>(remainingBones.Take(estimatedRemainingBones));
+                }
+            }
+
+            // PhysBone cleanup from analysis
+            if (cleanupPhysBones && physBoneAnalysis != null)
+            {
+                // Remove PhysBones that were identified as on deleted objects
+                if (physBoneAnalysis.PhysBonesOnDeletedObjects != null)
+                {
+                    foreach (var pb in physBoneAnalysis.PhysBonesOnDeletedObjects)
+                    {
+                        if (pb != null)
+                        {
+                            string path = GetRelativePath(selectedAvatar.transform, pb.transform);
+                            remainingPhysBones.Remove(path);
+                        }
+                    }
+                }
             }
 
             // Animator cleanup estimates
@@ -573,48 +641,55 @@ namespace AvatarOutfitOptimizer
             {
                 if (animatorAnalysis.UnusedParameters != null)
                 {
-                    removedParams += animatorAnalysis.UnusedParameters.Count;
-                }
-                if (aggressiveAnimatorCleanup && animatorAnalysis.PotentiallyUnusedClips != null)
-                {
-                    // Potentially unused clips don't directly affect counts
+                    foreach (var param in animatorAnalysis.UnusedParameters)
+                    {
+                        remainingAnimatorParams.Remove(param);
+                    }
                 }
             }
 
-            // Menu cleanup estimates
-            if (cleanupMenu && menuAnalysis != null)
+            // Bone pruning (aggressive mode only)
+            if (aggressiveBonePruning && physBoneAnalysis != null && physBoneAnalysis.PrunableBones != null)
             {
-                // Broken parameter controls don't directly affect parameter count
-                // They just remove menu items
-            }
-
-            // PhysBone cleanup estimates
-            if (cleanupPhysBones && physBoneAnalysis != null)
-            {
-                if (physBoneAnalysis.PhysBonesOnDeletedObjects != null)
+                foreach (var bone in physBoneAnalysis.PrunableBones)
                 {
-                    removedPhysBones += physBoneAnalysis.PhysBonesOnDeletedObjects.Count;
+                    if (bone != null)
+                    {
+                        string path = GetRelativePath(selectedAvatar.transform, bone);
+                        remainingBones.Remove(path);
+                    }
                 }
             }
 
-            // Bone pruning estimates (only in aggressive mode)
-            if (aggressiveBonePruning && physBoneAnalysis != null)
-            {
-                if (physBoneAnalysis.PrunableBones != null)
-                {
-                    removedBones += physBoneAnalysis.PrunableBones.Count;
-                }
-            }
-
-            // Create simulated snapshot with estimated values
-            return AvatarSnapshot.CreateSimulated(
-                currentSnapshot.MeshCount - removedMeshes,
-                currentSnapshot.MaterialCount - removedMaterials,
-                currentSnapshot.BoneCount - removedBones,
-                currentSnapshot.PhysBoneCount - removedPhysBones,
-                currentSnapshot.ParameterCount - removedParams,
+            // Create simulated snapshot with full path lists
+            return AvatarSnapshot.CreateSimulatedWithPaths(
+                remainingObjects.ToList(),
+                remainingRenderers.ToList(),
+                remainingBones.ToList(),
+                remainingPhysBones.ToList(),
+                remainingExpressionParams.ToList(),
+                remainingAnimatorParams.ToList(),
+                remainingMaterials,
                 currentSnapshot.AvatarFingerprint
             );
+        }
+
+        private string GetRelativePath(Transform root, Transform target)
+        {
+            if (target == null) return "";
+            if (target == root) return target.name;
+
+            var path = new List<string>();
+            var current = target;
+
+            while (current != null && current != root)
+            {
+                path.Add(current.name);
+                current = current.parent;
+            }
+
+            path.Reverse();
+            return string.Join("/", path);
         }
     }
 }
