@@ -6,6 +6,23 @@
   "packages": {
     "com.sophey3dx.avatar-optimizer": {
       "versions": {
+        "1.0.18": {
+          "name": "com.sophey3dx.avatar-optimizer",
+          "displayName": "VRChat Avatar Optimizer",
+          "version": "1.0.18",
+          "unity": "2022.3",
+          "description": "Production-ready Unity Editor Tool for VRChat avatars. Now with Blender 5.0 Bridge for advanced optimization workflow.",
+          "author": {
+            "name": "Sophey3dx",
+            "url": "https://github.com/Sophey3dx"
+          },
+          "vpmDependencies": {
+            "com.vrchat.avatars": ">=3.4.0"
+          },
+          "url": "https://github.com/Sophey3dx/VR-Chat-Avatar-Optimizer/releases/download/v1.0.18/com.sophey3dx.avatar-optimizer-1.0.18.zip",
+          "legacyFolders": {},
+          "legacyFiles": {}
+        },
         "1.0.17": {
           "name": "com.sophey3dx.avatar-optimizer",
           "displayName": "VRChat Avatar Optimizer",

@@ -1,69 +1,100 @@
-# VRChat Avatar Optimizer - Blender Plugin
+# VRChat Avatar Optimizer - Blender 5.0 Plugin
 
-A standalone Blender 4.x plugin to optimize VRChat avatars by reducing bones, triangles, and texture sizes.
+Advanced mesh, bone, and texture optimization for VRChat avatars with **Unity Bridge** support.
 
 ## Features
 
-- **Avatar Analysis**: Shows current triangle count, bone count, materials, and texture memory
-- **Mesh Decimation**: Reduce triangles while preserving shape keys and UVs
-- **Bone Removal**: Automatically remove unused bones from the armature
-- **Texture Resizing**: Batch resize all textures to reduce memory usage
-- **VRChat Limits**: Shows VRChat's performance limits for reference
+### 🔗 Unity Bridge
+- **Automatic Folder Watch** - Blender detects when Unity exports new data
+- **Auto Apply Selection** - Automatically mark objects to keep/remove
+- **Auto Delete** - Optionally delete unwanted objects automatically
+- **Two-way Workflow** - Configure in Unity, execute in Blender
+
+### 🔧 Optimization Tools
+- **Mesh Decimation** - Reduce triangle count with adjustable ratio
+- **Unused Bone Removal** - Delete bones not used by any vertex groups
+- **Texture Resizing** - Scale down textures to target resolution
+- **Scene Analysis** - View current stats vs VRChat limits
 
 ## Installation
 
-1. Open Blender 4.x
+### Blender 5.0+
+1. Open Blender
 2. Go to `Edit > Preferences > Add-ons`
 3. Click `Install...`
 4. Select `vrchat_avatar_optimizer.py`
-5. Enable the addon by checking the checkbox
+5. Enable the addon by checking the box
 
-## Usage
+### Location
+After installation, find the panel in:
+`View3D > Sidebar (N) > VRC Optimizer`
 
-1. Import your VRChat avatar (FBX)
-2. Open the sidebar in 3D View (`N` key)
-3. Select the "VRC Optimizer" tab
-4. Click **Analyze Avatar** to see current stats
-5. Adjust settings as needed
-6. Click **OPTIMIZE ALL** or use individual optimization buttons
+## Unity Bridge Workflow
 
-## VRChat Performance Limits
+### Step 1: Configure in Unity
+1. Open your avatar in Unity
+2. Open `Tools > VRChat Avatar Optimizer`
+3. **Enable only the objects you want to KEEP**
+4. Click `Capture Snapshot`
+5. Click `Export to Blender`
 
-| Metric | Good Rank | Recommended |
-|--------|-----------|-------------|
-| Triangles | 70,000 | 32,000 |
-| Bones | 400 | 75 |
-| PhysBones | 32 | 4 |
-| PB Transforms | 256 | 16 |
-| Materials | 32 | 4 |
+### Step 2: Import to Blender
+1. Export your avatar FBX from Unity
+2. Import FBX into Blender
+3. In the VRC Optimizer panel, click `Reload` or start `Auto-Watch`
+4. Click `Apply Selection` - objects to remove will be hidden
 
-## Options
+### Step 3: Delete Unwanted Objects
+- Click `DELETE Marked Objects` to permanently remove hidden objects
+- Or enable `Auto Delete` for automatic removal
 
-### Mesh Optimization
-- **Target Triangles**: The goal triangle count for decimation
-- **Preserve Shape Keys**: Try to maintain shape keys during decimation
-- **Preserve UVs**: Maintain UV seam integrity
-- **Merge Close Vertices**: Merge vertices within a threshold distance
+### Step 4: Optimize Further
+1. Use `Decimate Meshes` to reduce triangle count
+2. Use `Remove Unused Bones` to clean up the armature
+3. Use `Resize Textures` to reduce texture memory
 
-### Bone Optimization
-- **Target Bones**: Goal bone count (for reference)
-- **Remove Unused Bones**: Delete bones not used by any mesh
+### Step 5: Export Back
+1. Export optimized FBX from Blender
+2. Import into Unity
+3. Run Unity optimizer for final cleanup
 
-### Texture Optimization
-- **Max Texture Size**: Resize textures larger than this resolution
+## Bridge File Location
 
-## Tips
+The bridge file is stored in:
+```
+Documents/VRChatAvatarOptimizer/vrchat_optimizer_bridge.json
+```
 
-1. **Before optimizing**: Make a backup of your model!
-2. **Shape keys**: Decimation may affect shape key quality
-3. **Bones**: Unused bone removal is safe - it only removes bones not weighted to any mesh
-4. **Textures**: Consider using texture atlasing for better material reduction
+Click `Open Bridge Folder` to view it.
+
+## VRChat Limits Reference
+
+| Metric | Excellent | Good/Medium | Poor |
+|--------|-----------|-------------|------|
+| Triangles | 32,000 | 70,000 | 70,000+ |
+| Bones | 75 | 400 | 400+ |
+| PhysBones | 4 | 32 | 32+ |
+| PB Transforms | 16 | 256 | 256+ |
 
 ## Requirements
 
-- Blender 4.0 or higher
-- VRChat avatar model (FBX format recommended)
+- Blender 5.0 or higher
+- (Optional) Unity with VRChat Avatar Optimizer for bridge features
 
-## License
+## Troubleshooting
 
-Free to use for personal and commercial projects.
+**"No bridge file found"**
+- Export from Unity first using `Export to Blender` button
+
+**Objects not being matched**
+- Blender may add `.001` suffixes - the plugin handles this
+- Check that object names match between Unity and Blender
+
+**Auto-Watch not working**
+- Make sure the modal operator is running (green button)
+- Check the console for errors
+
+## Version History
+
+- **v2.0.0** - Blender 5.0 support, Unity Bridge, Auto-Watch, Auto-Delete
+- **v1.0.0** - Initial release with basic optimization tools

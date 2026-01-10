@@ -1,451 +1,501 @@
-# VRChat Avatar Optimizer for Blender 4.x
-# Standalone plugin to optimize VRChat avatars
-# Features: Bone removal, Mesh decimation, Texture optimization
+# VRChat Avatar Optimizer - Blender 5.0 Plugin
+# Bridge to Unity for seamless avatar optimization workflow
 
 bl_info = {
     "name": "VRChat Avatar Optimizer",
     "author": "Sophey3dx",
-    "version": (1, 0, 0),
-    "blender": (4, 0, 0),
+    "version": (2, 0, 0),
+    "blender": (5, 0, 0),
     "location": "View3D > Sidebar > VRC Optimizer",
-    "description": "Optimize VRChat avatars by reducing bones, triangles, and texture sizes",
+    "description": "Optimize VRChat avatars with Unity bridge support",
     "category": "3D View",
 }
 
 import bpy
-import bmesh
-from bpy.types import Panel, Operator, PropertyGroup
-from bpy.props import IntProperty, FloatProperty, BoolProperty, EnumProperty, PointerProperty
-from mathutils import Vector
 import os
-
-# ============================================================================
-# VRChat Limits (from VRChat SDK)
-# ============================================================================
-class VRChatLimits:
-    # Recommended (Excellent)
-    EXCELLENT_TRIANGLES = 32000
-    EXCELLENT_BONES = 75
-    EXCELLENT_PHYSBONES = 4
-    EXCELLENT_PHYSBONE_TRANSFORMS = 16
-    EXCELLENT_MATERIALS = 4
-    
-    # Maximum (Good)
-    MAX_TRIANGLES = 70000
-    MAX_BONES = 400
-    MAX_PHYSBONES = 32
-    MAX_PHYSBONE_TRANSFORMS = 256
-    MAX_MATERIALS = 32
+import json
+import time
+from bpy.props import (
+    FloatProperty, 
+    IntProperty, 
+    BoolProperty, 
+    StringProperty,
+    EnumProperty
+)
+from bpy.types import Operator, Panel, PropertyGroup
+from pathlib import Path
 
 
 # ============================================================================
-# Properties
+# BRIDGE DATA HANDLER
 # ============================================================================
-class VRCOptimizerProperties(PropertyGroup):
-    # Target values
-    target_triangles: IntProperty(
-        name="Target Triangles",
-        description="Target triangle count",
-        default=70000,
-        min=1000,
-        max=500000
-    )
+
+class BridgeData:
+    """Handles communication with Unity via JSON bridge file"""
     
-    target_bones: IntProperty(
-        name="Target Bones",
-        description="Target bone count",
-        default=400,
-        min=50,
-        max=1000
-    )
+    _instance = None
+    _last_modified = 0
+    _data = None
     
-    # Options
-    preserve_shape_keys: BoolProperty(
-        name="Preserve Shape Keys",
-        description="Try to preserve shape keys during decimation",
-        default=True
-    )
+    @classmethod
+    def get_bridge_path(cls):
+        """Get the default bridge folder path"""
+        documents = Path.home() / "Documents" / "VRChatAvatarOptimizer"
+        return documents / "vrchat_optimizer_bridge.json"
     
-    preserve_uvs: BoolProperty(
-        name="Preserve UVs",
-        description="Try to preserve UV seams during decimation",
-        default=True
-    )
+    @classmethod
+    def load(cls, force=False):
+        """Load bridge data from JSON file"""
+        path = cls.get_bridge_path()
+        
+        if not path.exists():
+            cls._data = None
+            return None
+        
+        # Check if file was modified
+        current_mtime = path.stat().st_mtime
+        if not force and current_mtime == cls._last_modified and cls._data is not None:
+            return cls._data
+        
+        try:
+            with open(path, 'r', encoding='utf-8') as f:
+                cls._data = json.load(f)
+                cls._last_modified = current_mtime
+                return cls._data
+        except Exception as e:
+            print(f"[VRC Optimizer] Error loading bridge data: {e}")
+            return None
     
-    texture_max_size: EnumProperty(
-        name="Max Texture Size",
-        description="Maximum texture resolution",
-        items=[
-            ('512', '512x512', 'Reduce to 512x512'),
-            ('1024', '1024x1024', 'Reduce to 1024x1024'),
-            ('2048', '2048x2048', 'Reduce to 2048x2048'),
-            ('4096', '4096x4096', 'Keep up to 4096x4096'),
-        ],
-        default='2048'
-    )
+    @classmethod
+    def get_keep_objects(cls):
+        """Get list of objects to keep"""
+        data = cls.load()
+        if data:
+            return data.get('keepObjects', [])
+        return []
     
-    remove_unused_bones: BoolProperty(
-        name="Remove Unused Bones",
-        description="Remove bones not used by any mesh",
-        default=True
-    )
+    @classmethod
+    def get_remove_objects(cls):
+        """Get list of objects to remove"""
+        data = cls.load()
+        if data:
+            return data.get('removeObjects', [])
+        return []
     
-    merge_by_distance: BoolProperty(
-        name="Merge Close Vertices",
-        description="Merge vertices that are very close together",
-        default=False
-    )
+    @classmethod
+    def get_settings(cls):
+        """Get optimization settings"""
+        data = cls.load()
+        if data:
+            return data.get('settings', {})
+        return {}
     
-    merge_distance: FloatProperty(
-        name="Merge Distance",
-        description="Distance threshold for merging vertices",
-        default=0.0001,
-        min=0.00001,
-        max=0.01
-    )
+    @classmethod
+    def has_new_data(cls):
+        """Check if bridge file has been updated"""
+        path = cls.get_bridge_path()
+        if not path.exists():
+            return False
+        
+        current_mtime = path.stat().st_mtime
+        return current_mtime != cls._last_modified
 
 
 # ============================================================================
-# Analysis Functions
+# FOLDER WATCH OPERATOR
 # ============================================================================
-def get_armature():
-    """Get the armature object"""
-    for obj in bpy.context.scene.objects:
-        if obj.type == 'ARMATURE':
-            return obj
-    return None
 
-def get_mesh_objects():
-    """Get all mesh objects"""
-    return [obj for obj in bpy.context.scene.objects if obj.type == 'MESH']
-
-def count_triangles():
-    """Count total triangles in all meshes"""
-    total = 0
-    for obj in get_mesh_objects():
-        if obj.data:
-            total += len(obj.data.polygons)
-    return total
-
-def count_bones():
-    """Count bones in armature"""
-    armature = get_armature()
-    if armature and armature.data:
-        return len(armature.data.bones)
-    return 0
-
-def get_used_bones():
-    """Get set of bones that are actually used by meshes"""
-    used_bones = set()
+class VRC_OT_folder_watch(Operator):
+    """Watch for Unity bridge file updates and auto-apply"""
+    bl_idname = "vrc.folder_watch"
+    bl_label = "Watch Bridge Folder"
+    bl_description = "Automatically detect and apply Unity bridge updates"
     
-    for obj in get_mesh_objects():
-        if obj.type != 'MESH':
-            continue
+    _timer = None
+    _running = False
+    
+    def modal(self, context, event):
+        if event.type == 'TIMER':
+            # Check if still running
+            if not context.scene.vrc_optimizer.watch_enabled:
+                self.cancel(context)
+                return {'CANCELLED'}
             
-        # Get bones from vertex groups
-        for vg in obj.vertex_groups:
-            used_bones.add(vg.name)
+            # Check for new bridge data
+            if BridgeData.has_new_data():
+                data = BridgeData.load(force=True)
+                if data:
+                    self.report({'INFO'}, f"[VRC] New bridge data detected: {data.get('avatarName', 'Unknown')}")
+                    
+                    # Auto-apply if enabled
+                    if context.scene.vrc_optimizer.auto_apply:
+                        bpy.ops.vrc.apply_bridge_selection()
+                        
+                        # Auto-delete if enabled
+                        if context.scene.vrc_optimizer.auto_delete:
+                            bpy.ops.vrc.delete_unselected()
         
-        # Get bones from armature modifier
-        for mod in obj.modifiers:
-            if mod.type == 'ARMATURE' and mod.object:
-                # All bones in the armature could potentially be used
-                pass
-    
-    return used_bones
-
-def get_unused_bones():
-    """Get bones that are not used by any mesh"""
-    armature = get_armature()
-    if not armature:
-        return set()
-    
-    all_bones = set(bone.name for bone in armature.data.bones)
-    used_bones = get_used_bones()
-    
-    # Also keep bones that are parents of used bones
-    bones_to_keep = set()
-    for bone_name in used_bones:
-        bone = armature.data.bones.get(bone_name)
-        while bone:
-            bones_to_keep.add(bone.name)
-            bone = bone.parent
-    
-    return all_bones - bones_to_keep
-
-def count_materials():
-    """Count unique materials"""
-    materials = set()
-    for obj in get_mesh_objects():
-        for slot in obj.material_slots:
-            if slot.material:
-                materials.add(slot.material.name)
-    return len(materials)
-
-def get_texture_memory_mb():
-    """Estimate texture memory usage in MB"""
-    total_bytes = 0
-    processed = set()
-    
-    for img in bpy.data.images:
-        if img.name in processed:
-            continue
-        processed.add(img.name)
-        
-        if img.size[0] > 0 and img.size[1] > 0:
-            # Estimate: width * height * 4 bytes (RGBA)
-            total_bytes += img.size[0] * img.size[1] * 4
-    
-    return total_bytes / (1024 * 1024)
-
-
-# ============================================================================
-# Operators
-# ============================================================================
-class VRC_OT_AnalyzeAvatar(Operator):
-    """Analyze avatar and show statistics"""
-    bl_idname = "vrc.analyze_avatar"
-    bl_label = "Analyze Avatar"
-    bl_options = {'REGISTER', 'UNDO'}
+        return {'PASS_THROUGH'}
     
     def execute(self, context):
-        triangles = count_triangles()
-        bones = count_bones()
-        materials = count_materials()
-        texture_mb = get_texture_memory_mb()
-        unused_bones = len(get_unused_bones())
+        if VRC_OT_folder_watch._running:
+            self.report({'WARNING'}, "Folder watch already running")
+            return {'CANCELLED'}
         
-        # Determine status
-        tri_status = "✓" if triangles <= VRChatLimits.MAX_TRIANGLES else "✗"
-        bone_status = "✓" if bones <= VRChatLimits.MAX_BONES else "✗"
-        mat_status = "✓" if materials <= VRChatLimits.MAX_MATERIALS else "✗"
+        # Start timer
+        wm = context.window_manager
+        self._timer = wm.event_timer_add(2.0, window=context.window)  # Check every 2 seconds
+        wm.modal_handler_add(self)
         
-        message = (
-            f"=== VRChat Avatar Analysis ===\n"
-            f"\n"
-            f"Triangles: {triangles:,} / {VRChatLimits.MAX_TRIANGLES:,} {tri_status}\n"
-            f"Bones: {bones} / {VRChatLimits.MAX_BONES} {bone_status}\n"
-            f"  (Unused: {unused_bones})\n"
-            f"Materials: {materials} / {VRChatLimits.MAX_MATERIALS} {mat_status}\n"
-            f"Texture Memory: ~{texture_mb:.1f} MB\n"
-        )
+        VRC_OT_folder_watch._running = True
+        context.scene.vrc_optimizer.watch_enabled = True
         
-        self.report({'INFO'}, message)
-        
-        # Also show in popup
-        def draw(self, context):
-            layout = self.layout
-            layout.label(text=f"Triangles: {triangles:,} / {VRChatLimits.MAX_TRIANGLES:,} {tri_status}")
-            layout.label(text=f"Bones: {bones} / {VRChatLimits.MAX_BONES} {bone_status}")
-            layout.label(text=f"  Unused bones: {unused_bones}")
-            layout.label(text=f"Materials: {materials} / {VRChatLimits.MAX_MATERIALS} {mat_status}")
-            layout.label(text=f"Texture Memory: ~{texture_mb:.1f} MB")
-        
-        context.window_manager.popup_menu(draw, title="Avatar Analysis", icon='INFO')
-        
+        self.report({'INFO'}, "Started watching bridge folder")
+        return {'RUNNING_MODAL'}
+    
+    def cancel(self, context):
+        if self._timer:
+            context.window_manager.event_timer_remove(self._timer)
+        VRC_OT_folder_watch._running = False
+        context.scene.vrc_optimizer.watch_enabled = False
+
+
+class VRC_OT_stop_watch(Operator):
+    """Stop watching the bridge folder"""
+    bl_idname = "vrc.stop_watch"
+    bl_label = "Stop Watching"
+    bl_description = "Stop automatic bridge detection"
+    
+    def execute(self, context):
+        context.scene.vrc_optimizer.watch_enabled = False
+        self.report({'INFO'}, "Stopped watching bridge folder")
         return {'FINISHED'}
 
 
-class VRC_OT_DecimateAll(Operator):
-    """Decimate all meshes to target triangle count"""
-    bl_idname = "vrc.decimate_all"
-    bl_label = "Decimate Meshes"
-    bl_options = {'REGISTER', 'UNDO'}
+# ============================================================================
+# BRIDGE OPERATORS
+# ============================================================================
+
+class VRC_OT_load_bridge(Operator):
+    """Load bridge data from Unity"""
+    bl_idname = "vrc.load_bridge"
+    bl_label = "Load Bridge Data"
+    bl_description = "Load object selection from Unity"
+    
+    def execute(self, context):
+        data = BridgeData.load(force=True)
+        
+        if data is None:
+            self.report({'WARNING'}, "No bridge file found. Export from Unity first.")
+            return {'CANCELLED'}
+        
+        props = context.scene.vrc_optimizer
+        props.bridge_avatar_name = data.get('avatarName', 'Unknown')
+        props.bridge_timestamp = data.get('timestamp', '')
+        props.bridge_keep_count = len(data.get('keepObjects', []))
+        props.bridge_remove_count = len(data.get('removeObjects', []))
+        
+        self.report({'INFO'}, f"Loaded bridge data for: {props.bridge_avatar_name}")
+        return {'FINISHED'}
+
+
+class VRC_OT_apply_bridge_selection(Operator):
+    """Apply bridge selection to scene objects"""
+    bl_idname = "vrc.apply_bridge_selection"
+    bl_label = "Apply Selection"
+    bl_description = "Select objects to keep, deselect objects to remove"
+    
+    def execute(self, context):
+        keep_objects = BridgeData.get_keep_objects()
+        remove_objects = BridgeData.get_remove_objects()
+        
+        if not keep_objects and not remove_objects:
+            self.report({'WARNING'}, "No bridge data loaded")
+            return {'CANCELLED'}
+        
+        # Deselect all first
+        bpy.ops.object.select_all(action='DESELECT')
+        
+        kept = 0
+        marked_remove = 0
+        
+        for obj in bpy.data.objects:
+            obj_name = obj.name
+            # Also check without .001, .002 suffixes
+            base_name = obj_name.rsplit('.', 1)[0] if '.' in obj_name and obj_name.rsplit('.', 1)[1].isdigit() else obj_name
+            
+            if obj_name in keep_objects or base_name in keep_objects:
+                obj.select_set(True)
+                obj.hide_set(False)
+                kept += 1
+            elif obj_name in remove_objects or base_name in remove_objects:
+                obj.select_set(False)
+                obj.hide_set(True)  # Hide objects marked for removal
+                marked_remove += 1
+        
+        self.report({'INFO'}, f"Applied: {kept} to keep, {marked_remove} to remove")
+        return {'FINISHED'}
+
+
+class VRC_OT_delete_unselected(Operator):
+    """Delete all hidden/unselected objects"""
+    bl_idname = "vrc.delete_unselected"
+    bl_label = "Delete Marked Objects"
+    bl_description = "Permanently delete objects marked for removal (hidden objects)"
+    bl_options = {'UNDO'}
+    
+    def invoke(self, context, event):
+        return context.window_manager.invoke_confirm(self, event)
+    
+    def execute(self, context):
+        remove_objects = BridgeData.get_remove_objects()
+        
+        deleted = 0
+        to_delete = []
+        
+        for obj in bpy.data.objects:
+            obj_name = obj.name
+            base_name = obj_name.rsplit('.', 1)[0] if '.' in obj_name and obj_name.rsplit('.', 1)[1].isdigit() else obj_name
+            
+            # Delete if in remove list OR if hidden
+            if obj_name in remove_objects or base_name in remove_objects or obj.hide_get():
+                to_delete.append(obj)
+        
+        # Delete objects
+        for obj in to_delete:
+            bpy.data.objects.remove(obj, do_unlink=True)
+            deleted += 1
+        
+        self.report({'INFO'}, f"Deleted {deleted} objects")
+        return {'FINISHED'}
+
+
+# ============================================================================
+# OPTIMIZATION OPERATORS
+# ============================================================================
+
+class VRC_OT_analyze(Operator):
+    """Analyze current scene for VRChat optimization"""
+    bl_idname = "vrc.analyze"
+    bl_label = "Analyze Scene"
+    bl_description = "Analyze meshes, bones, and textures"
     
     def execute(self, context):
         props = context.scene.vrc_optimizer
-        target = props.target_triangles
-        current = count_triangles()
         
-        if current <= target:
-            self.report({'INFO'}, f"Already at or below target ({current:,} triangles)")
-            return {'FINISHED'}
+        # Count triangles
+        total_tris = 0
+        mesh_count = 0
+        for obj in bpy.data.objects:
+            if obj.type == 'MESH' and not obj.hide_get():
+                mesh_count += 1
+                if obj.data:
+                    total_tris += sum(len(p.vertices) - 2 for p in obj.data.polygons)
         
-        # Calculate ratio
-        ratio = target / current
+        # Count bones
+        bone_count = 0
+        for obj in bpy.data.objects:
+            if obj.type == 'ARMATURE' and not obj.hide_get():
+                bone_count += len(obj.data.bones)
         
-        # Apply decimation to each mesh
-        for obj in get_mesh_objects():
-            if obj.type != 'MESH':
-                continue
-            
-            # Select only this object
-            bpy.ops.object.select_all(action='DESELECT')
-            obj.select_set(True)
-            context.view_layer.objects.active = obj
-            
-            # Add decimate modifier
-            mod = obj.modifiers.new(name="VRC_Decimate", type='DECIMATE')
-            mod.decimate_type = 'COLLAPSE'
-            mod.ratio = ratio
-            
-            if props.preserve_uvs:
-                mod.use_collapse_triangulate = True
-            
-            # Apply modifier
-            bpy.ops.object.modifier_apply(modifier=mod.name)
+        # Count materials
+        material_count = len([m for m in bpy.data.materials if m.users > 0])
         
-        new_count = count_triangles()
-        self.report({'INFO'}, f"Decimated: {current:,} → {new_count:,} triangles")
+        props.scene_triangles = total_tris
+        props.scene_bones = bone_count
+        props.scene_meshes = mesh_count
+        props.scene_materials = material_count
         
+        self.report({'INFO'}, f"Analysis: {total_tris} tris, {bone_count} bones, {mesh_count} meshes")
         return {'FINISHED'}
 
 
-class VRC_OT_RemoveUnusedBones(Operator):
-    """Remove bones not used by any mesh"""
-    bl_idname = "vrc.remove_unused_bones"
-    bl_label = "Remove Unused Bones"
-    bl_options = {'REGISTER', 'UNDO'}
+class VRC_OT_decimate_mesh(Operator):
+    """Decimate selected meshes to reduce triangle count"""
+    bl_idname = "vrc.decimate_mesh"
+    bl_label = "Decimate Meshes"
+    bl_description = "Reduce triangle count of selected meshes"
+    bl_options = {'UNDO'}
     
     def execute(self, context):
-        armature = get_armature()
+        props = context.scene.vrc_optimizer
+        ratio = props.decimate_ratio
+        
+        decimated = 0
+        for obj in context.selected_objects:
+            if obj.type == 'MESH':
+                # Add decimate modifier
+                mod = obj.modifiers.new(name="VRC_Decimate", type='DECIMATE')
+                mod.ratio = ratio
+                mod.use_collapse_triangulate = True
+                
+                # Apply modifier
+                context.view_layer.objects.active = obj
+                bpy.ops.object.modifier_apply(modifier=mod.name)
+                decimated += 1
+        
+        self.report({'INFO'}, f"Decimated {decimated} meshes to {ratio*100:.0f}%")
+        return {'FINISHED'}
+
+
+class VRC_OT_remove_unused_bones(Operator):
+    """Remove bones not used by any vertex groups"""
+    bl_idname = "vrc.remove_unused_bones"
+    bl_label = "Remove Unused Bones"
+    bl_description = "Delete bones that don't affect any mesh"
+    bl_options = {'UNDO'}
+    
+    def execute(self, context):
+        armature = None
+        for obj in context.selected_objects:
+            if obj.type == 'ARMATURE':
+                armature = obj
+                break
+        
         if not armature:
-            self.report({'ERROR'}, "No armature found")
+            self.report({'WARNING'}, "Select an armature first")
             return {'CANCELLED'}
         
-        unused = get_unused_bones()
-        
-        if not unused:
-            self.report({'INFO'}, "No unused bones found")
-            return {'FINISHED'}
+        # Collect used bones from vertex groups
+        used_bones = set()
+        for obj in bpy.data.objects:
+            if obj.type == 'MESH' and not obj.hide_get():
+                for vg in obj.vertex_groups:
+                    used_bones.add(vg.name)
         
         # Enter edit mode
-        bpy.ops.object.select_all(action='DESELECT')
-        armature.select_set(True)
         context.view_layer.objects.active = armature
         bpy.ops.object.mode_set(mode='EDIT')
         
-        # Delete unused bones
-        for bone_name in unused:
-            bone = armature.data.edit_bones.get(bone_name)
+        # Find unused bones
+        removed = 0
+        edit_bones = armature.data.edit_bones
+        bones_to_remove = []
+        
+        for bone in edit_bones:
+            if bone.name not in used_bones:
+                # Don't remove root bones or bones with used children
+                has_used_child = any(child.name in used_bones for child in bone.children_recursive)
+                if not has_used_child and bone.parent is not None:
+                    bones_to_remove.append(bone.name)
+        
+        for bone_name in bones_to_remove:
+            bone = edit_bones.get(bone_name)
             if bone:
-                armature.data.edit_bones.remove(bone)
+                edit_bones.remove(bone)
+                removed += 1
         
         bpy.ops.object.mode_set(mode='OBJECT')
         
-        self.report({'INFO'}, f"Removed {len(unused)} unused bones")
-        
+        self.report({'INFO'}, f"Removed {removed} unused bones")
         return {'FINISHED'}
 
 
-class VRC_OT_ResizeTextures(Operator):
+class VRC_OT_resize_textures(Operator):
     """Resize all textures to maximum size"""
     bl_idname = "vrc.resize_textures"
     bl_label = "Resize Textures"
-    bl_options = {'REGISTER', 'UNDO'}
+    bl_description = "Scale down textures to maximum resolution"
+    bl_options = {'UNDO'}
     
     def execute(self, context):
         props = context.scene.vrc_optimizer
-        max_size = int(props.texture_max_size)
+        max_size = props.max_texture_size
         
         resized = 0
-        
-        for img in bpy.data.images:
-            if img.size[0] <= 0 or img.size[1] <= 0:
-                continue
-            
-            if img.size[0] > max_size or img.size[1] > max_size:
+        for image in bpy.data.images:
+            if image.size[0] > max_size or image.size[1] > max_size:
                 # Calculate new size maintaining aspect ratio
-                aspect = img.size[0] / img.size[1]
+                ratio = min(max_size / image.size[0], max_size / image.size[1])
+                new_width = int(image.size[0] * ratio)
+                new_height = int(image.size[1] * ratio)
                 
-                if aspect >= 1:
-                    new_width = max_size
-                    new_height = int(max_size / aspect)
-                else:
-                    new_height = max_size
-                    new_width = int(max_size * aspect)
-                
-                img.scale(new_width, new_height)
+                image.scale(new_width, new_height)
                 resized += 1
         
-        new_memory = get_texture_memory_mb()
-        self.report({'INFO'}, f"Resized {resized} textures. New memory: ~{new_memory:.1f} MB")
-        
+        self.report({'INFO'}, f"Resized {resized} textures to max {max_size}px")
         return {'FINISHED'}
 
 
-class VRC_OT_MergeVertices(Operator):
-    """Merge vertices by distance"""
-    bl_idname = "vrc.merge_vertices"
-    bl_label = "Merge Close Vertices"
-    bl_options = {'REGISTER', 'UNDO'}
+class VRC_OT_open_bridge_folder(Operator):
+    """Open the bridge folder in file explorer"""
+    bl_idname = "vrc.open_bridge_folder"
+    bl_label = "Open Bridge Folder"
+    bl_description = "Open the folder where Unity exports bridge data"
     
     def execute(self, context):
-        props = context.scene.vrc_optimizer
-        distance = props.merge_distance
+        path = BridgeData.get_bridge_path().parent
+        path.mkdir(parents=True, exist_ok=True)
         
-        total_removed = 0
+        import subprocess
+        import sys
         
-        for obj in get_mesh_objects():
-            if obj.type != 'MESH':
-                continue
-            
-            before = len(obj.data.vertices)
-            
-            # Select object
-            bpy.ops.object.select_all(action='DESELECT')
-            obj.select_set(True)
-            context.view_layer.objects.active = obj
-            
-            # Enter edit mode and merge
-            bpy.ops.object.mode_set(mode='EDIT')
-            bpy.ops.mesh.select_all(action='SELECT')
-            bpy.ops.mesh.remove_doubles(threshold=distance)
-            bpy.ops.object.mode_set(mode='OBJECT')
-            
-            after = len(obj.data.vertices)
-            total_removed += (before - after)
-        
-        self.report({'INFO'}, f"Merged {total_removed} vertices")
-        
-        return {'FINISHED'}
-
-
-class VRC_OT_OptimizeAll(Operator):
-    """Run all optimizations"""
-    bl_idname = "vrc.optimize_all"
-    bl_label = "Optimize All"
-    bl_options = {'REGISTER', 'UNDO'}
-    
-    def execute(self, context):
-        props = context.scene.vrc_optimizer
-        
-        messages = []
-        
-        # 1. Remove unused bones
-        if props.remove_unused_bones:
-            bpy.ops.vrc.remove_unused_bones()
-            messages.append("Removed unused bones")
-        
-        # 2. Merge vertices
-        if props.merge_by_distance:
-            bpy.ops.vrc.merge_vertices()
-            messages.append("Merged close vertices")
-        
-        # 3. Decimate meshes
-        if count_triangles() > props.target_triangles:
-            bpy.ops.vrc.decimate_all()
-            messages.append("Decimated meshes")
-        
-        # 4. Resize textures
-        bpy.ops.vrc.resize_textures()
-        messages.append("Resized textures")
-        
-        # Final analysis
-        bpy.ops.vrc.analyze_avatar()
-        
-        self.report({'INFO'}, f"Optimization complete: {', '.join(messages)}")
+        if sys.platform == 'win32':
+            os.startfile(str(path))
+        elif sys.platform == 'darwin':
+            subprocess.run(['open', str(path)])
+        else:
+            subprocess.run(['xdg-open', str(path)])
         
         return {'FINISHED'}
 
 
 # ============================================================================
-# UI Panel
+# PROPERTY GROUP
 # ============================================================================
-class VRC_PT_OptimizerPanel(Panel):
-    """VRChat Avatar Optimizer Panel"""
+
+class VRC_OptimizerProperties(PropertyGroup):
+    # Bridge properties
+    bridge_avatar_name: StringProperty(name="Avatar", default="")
+    bridge_timestamp: StringProperty(name="Timestamp", default="")
+    bridge_keep_count: IntProperty(name="Keep", default=0)
+    bridge_remove_count: IntProperty(name="Remove", default=0)
+    
+    # Watch settings
+    watch_enabled: BoolProperty(name="Watch Enabled", default=False)
+    auto_apply: BoolProperty(
+        name="Auto Apply", 
+        default=True,
+        description="Automatically apply selection when bridge file updates"
+    )
+    auto_delete: BoolProperty(
+        name="Auto Delete", 
+        default=False,
+        description="Automatically delete objects marked for removal"
+    )
+    
+    # Scene stats
+    scene_triangles: IntProperty(name="Triangles", default=0)
+    scene_bones: IntProperty(name="Bones", default=0)
+    scene_meshes: IntProperty(name="Meshes", default=0)
+    scene_materials: IntProperty(name="Materials", default=0)
+    
+    # Optimization settings
+    decimate_ratio: FloatProperty(
+        name="Decimate Ratio",
+        default=0.5,
+        min=0.01,
+        max=1.0,
+        description="Target polygon ratio (0.5 = 50% reduction)"
+    )
+    
+    max_texture_size: IntProperty(
+        name="Max Texture Size",
+        default=2048,
+        min=128,
+        max=4096,
+        description="Maximum texture resolution in pixels"
+    )
+
+
+# ============================================================================
+# PANEL
+# ============================================================================
+
+class VRC_PT_optimizer_panel(Panel):
+    """Main panel for VRChat Avatar Optimizer"""
     bl_label = "VRChat Avatar Optimizer"
-    bl_idname = "VRC_PT_optimizer"
+    bl_idname = "VRC_PT_optimizer_panel"
     bl_space_type = 'VIEW_3D'
     bl_region_type = 'UI'
     bl_category = "VRC Optimizer"
@@ -454,88 +504,132 @@ class VRC_PT_OptimizerPanel(Panel):
         layout = self.layout
         props = context.scene.vrc_optimizer
         
-        # Analysis Section
+        # ===== UNITY BRIDGE SECTION =====
         box = layout.box()
-        box.label(text="Analysis", icon='VIEWZOOM')
+        box.label(text="Unity Bridge", icon='LINKED')
         
-        # Quick stats
+        # Bridge status
+        bridge_path = BridgeData.get_bridge_path()
+        if bridge_path.exists():
+            box.label(text=f"✓ Bridge file found", icon='CHECKMARK')
+            if props.bridge_avatar_name:
+                box.label(text=f"Avatar: {props.bridge_avatar_name}")
+                row = box.row()
+                row.label(text=f"Keep: {props.bridge_keep_count}")
+                row.label(text=f"Remove: {props.bridge_remove_count}")
+        else:
+            box.label(text="✗ No bridge file", icon='ERROR')
+            box.label(text="Export from Unity first")
+        
+        # Bridge buttons
+        row = box.row(align=True)
+        row.operator("vrc.load_bridge", text="Reload", icon='FILE_REFRESH')
+        row.operator("vrc.open_bridge_folder", text="Open Folder", icon='FILE_FOLDER')
+        
+        box.operator("vrc.apply_bridge_selection", text="Apply Selection", icon='RESTRICT_SELECT_OFF')
+        
+        # Watch settings
         col = box.column(align=True)
-        col.label(text=f"Triangles: {count_triangles():,}")
-        col.label(text=f"Bones: {count_bones()}")
-        col.label(text=f"Materials: {count_materials()}")
-        col.label(text=f"Texture Memory: ~{get_texture_memory_mb():.1f} MB")
+        if not props.watch_enabled:
+            col.operator("vrc.folder_watch", text="Start Auto-Watch", icon='PLAY')
+        else:
+            col.operator("vrc.stop_watch", text="Stop Auto-Watch", icon='PAUSE')
+            col.label(text="Watching for changes...", icon='TIME')
         
-        box.operator("vrc.analyze_avatar", icon='INFO')
+        row = col.row()
+        row.prop(props, "auto_apply", text="Auto Apply")
+        row.prop(props, "auto_delete", text="Auto Delete")
         
-        # Limits reference
-        box2 = layout.box()
-        box2.label(text="VRChat Limits (Good Rank)", icon='ERROR')
-        col = box2.column(align=True)
-        col.label(text=f"Max Triangles: {VRChatLimits.MAX_TRIANGLES:,}")
-        col.label(text=f"Max Bones: {VRChatLimits.MAX_BONES}")
-        col.label(text=f"Max PhysBones: {VRChatLimits.MAX_PHYSBONES}")
-        col.label(text=f"Max Materials: {VRChatLimits.MAX_MATERIALS}")
+        # Delete button
+        box.separator()
+        row = box.row()
+        row.alert = True
+        row.operator("vrc.delete_unselected", text="DELETE Marked Objects", icon='TRASH')
         
-        # Mesh Optimization
-        box3 = layout.box()
-        box3.label(text="Mesh Optimization", icon='MESH_DATA')
-        box3.prop(props, "target_triangles")
-        box3.prop(props, "preserve_shape_keys")
-        box3.prop(props, "preserve_uvs")
-        box3.operator("vrc.decimate_all", icon='MOD_DECIM')
-        
-        row = box3.row()
-        row.prop(props, "merge_by_distance")
-        if props.merge_by_distance:
-            row.prop(props, "merge_distance")
-            box3.operator("vrc.merge_vertices", icon='AUTOMERGE_ON')
-        
-        # Bone Optimization
-        box4 = layout.box()
-        box4.label(text="Bone Optimization", icon='BONE_DATA')
-        box4.prop(props, "target_bones")
-        box4.prop(props, "remove_unused_bones")
-        
-        unused_count = len(get_unused_bones())
-        if unused_count > 0:
-            box4.label(text=f"Unused bones found: {unused_count}", icon='ERROR')
-        
-        box4.operator("vrc.remove_unused_bones", icon='BONE_DATA')
-        
-        # Texture Optimization
-        box5 = layout.box()
-        box5.label(text="Texture Optimization", icon='TEXTURE')
-        box5.prop(props, "texture_max_size")
-        box5.operator("vrc.resize_textures", icon='IMAGE_DATA')
-        
-        # Optimize All
         layout.separator()
-        layout.operator("vrc.optimize_all", icon='PLAY', text="OPTIMIZE ALL")
+        
+        # ===== ANALYSIS SECTION =====
+        box = layout.box()
+        box.label(text="Scene Analysis", icon='INFO')
+        
+        box.operator("vrc.analyze", text="Analyze Scene", icon='VIEWZOOM')
+        
+        if props.scene_triangles > 0:
+            col = box.column(align=True)
+            
+            # Triangle status
+            tris = props.scene_triangles
+            tris_status = "✓" if tris <= 70000 else "⚠" if tris <= 100000 else "✗"
+            col.label(text=f"{tris_status} Triangles: {tris:,} / 70,000")
+            
+            # Bone status
+            bones = props.scene_bones
+            bone_status = "✓" if bones <= 400 else "⚠" if bones <= 500 else "✗"
+            col.label(text=f"{bone_status} Bones: {bones} / 400")
+            
+            # Mesh status
+            col.label(text=f"Meshes: {props.scene_meshes}")
+            col.label(text=f"Materials: {props.scene_materials}")
+        
+        layout.separator()
+        
+        # ===== OPTIMIZATION SECTION =====
+        box = layout.box()
+        box.label(text="Optimization Tools", icon='MODIFIER')
+        
+        # Decimate
+        col = box.column(align=True)
+        col.prop(props, "decimate_ratio", slider=True)
+        col.operator("vrc.decimate_mesh", text="Decimate Selected", icon='MOD_DECIM')
+        
+        box.separator()
+        
+        # Bones
+        box.operator("vrc.remove_unused_bones", text="Remove Unused Bones", icon='BONE_DATA')
+        
+        box.separator()
+        
+        # Textures
+        col = box.column(align=True)
+        col.prop(props, "max_texture_size")
+        col.operator("vrc.resize_textures", text="Resize Textures", icon='TEXTURE')
 
 
 # ============================================================================
-# Registration
+# REGISTRATION
 # ============================================================================
+
 classes = (
-    VRCOptimizerProperties,
-    VRC_OT_AnalyzeAvatar,
-    VRC_OT_DecimateAll,
-    VRC_OT_RemoveUnusedBones,
-    VRC_OT_ResizeTextures,
-    VRC_OT_MergeVertices,
-    VRC_OT_OptimizeAll,
-    VRC_PT_OptimizerPanel,
+    VRC_OptimizerProperties,
+    VRC_OT_folder_watch,
+    VRC_OT_stop_watch,
+    VRC_OT_load_bridge,
+    VRC_OT_apply_bridge_selection,
+    VRC_OT_delete_unselected,
+    VRC_OT_analyze,
+    VRC_OT_decimate_mesh,
+    VRC_OT_remove_unused_bones,
+    VRC_OT_resize_textures,
+    VRC_OT_open_bridge_folder,
+    VRC_PT_optimizer_panel,
 )
+
 
 def register():
     for cls in classes:
         bpy.utils.register_class(cls)
-    bpy.types.Scene.vrc_optimizer = PointerProperty(type=VRCOptimizerProperties)
+    
+    bpy.types.Scene.vrc_optimizer = bpy.props.PointerProperty(type=VRC_OptimizerProperties)
+    print("[VRC Optimizer] Registered successfully")
+
 
 def unregister():
     for cls in reversed(classes):
         bpy.utils.unregister_class(cls)
+    
     del bpy.types.Scene.vrc_optimizer
+    print("[VRC Optimizer] Unregistered")
+
 
 if __name__ == "__main__":
     register()

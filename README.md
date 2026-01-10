@@ -7,7 +7,8 @@ A production-ready Unity Editor Tool for VRChat avatar creators that automatical
 - **Safe Optimization**: Never modifies the original avatar - always creates duplicates
 - **Dry Run Mode**: Preview changes before applying them
 - **Comprehensive Analysis**: Scans AnimatorControllers, Expression Menus, PhysBones, and more
-- **Performance Estimation**: Provides estimated performance tier (not guaranteed rank)
+- **Performance Estimation**: Provides estimated performance tier with VRChat SDK limits
+- **Blender Bridge**: Export selection to Blender 5.0 for advanced optimization
 - **Advanced Options**: Aggressive cleanup modes for experienced users
 - **Individual Cleanup Areas**: Choose which areas to optimize
 
@@ -29,21 +30,24 @@ A production-ready Unity Editor Tool for VRChat avatar creators that automatical
 4. Enter: `https://github.com/Sophey3dx/VR-Chat-Avatar-Optimizer.git`
 5. Click **"Add"**
 
-### Method 3: manifest.json
-
-Add to your `Packages/manifest.json`:
-```json
-"com.vrchat.avatar-optimizer": "https://github.com/Sophey3dx/VR-Chat-Avatar-Optimizer.git"
-```
-
 ## Usage
 
-1. Open the tool: `Window > VRChat Avatar Optimizer`
+### Basic Workflow
+1. Open the tool: `Tools > VRChat Avatar Optimizer`
 2. Select your avatar GameObject (must have VRC Avatar Descriptor)
-3. Click "Capture Snapshot" to analyze current state
-4. Review the analysis in the "Analysis" tab
-5. Select which cleanup areas to apply in the "Optimize" tab
-6. Enable "Dry Run" to preview, or click "Create Optimized Avatar" to apply
+3. **Enable only the objects you want to KEEP** in the hierarchy
+4. Click "Capture Snapshot" to analyze current state
+5. Review the analysis in the "Analysis" tab
+6. Select which cleanup areas to apply in the "Optimize" tab
+7. Enable "Dry Run" to preview, or click "Create Optimized Avatar" to apply
+
+### Blender Bridge (Advanced)
+1. After capturing a snapshot, click **"Export to Blender"**
+2. Open your avatar in Blender 5.0
+3. Install the Blender plugin from `BlenderPlugin/vrchat_avatar_optimizer.py`
+4. The plugin will automatically detect which objects to keep/remove
+5. Use Blender tools to decimate meshes, remove unused bones, resize textures
+6. Export back to Unity for final optimization
 
 ## Important Notes
 
@@ -54,5 +58,6 @@ Add to your `Packages/manifest.json`:
 
 ## Requirements
 
-- Unity 2022.3.22f1
-- VRChat SDK 3 (Avatars)
+- Unity 2022.3
+- VRChat SDK 3 (Avatars) >= 3.4.0
+- (Optional) Blender 5.0 for advanced optimization

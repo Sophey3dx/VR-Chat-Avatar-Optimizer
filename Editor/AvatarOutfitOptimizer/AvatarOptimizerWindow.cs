@@ -366,6 +366,31 @@ namespace AvatarOutfitOptimizer
 
             EditorGUILayout.Space(10);
 
+            // Blender Bridge Section
+            EditorGUILayout.LabelField("Blender Bridge", EditorStyles.boldLabel);
+            EditorGUILayout.HelpBox(
+                "Export your selection to Blender for advanced optimization.\n" +
+                "Blender will automatically detect which objects to keep/remove.",
+                MessageType.Info);
+            
+            EditorGUILayout.BeginHorizontal();
+            
+            GUI.enabled = fullSnapshot != null && activeSnapshot != null;
+            if (GUILayout.Button("Export to Blender", GUILayout.Height(25)))
+            {
+                BlenderBridge.ExportBridgeData(selectedAvatar, fullSnapshot, activeSnapshot);
+            }
+            GUI.enabled = true;
+            
+            if (GUILayout.Button("Open Bridge Folder", GUILayout.Height(25)))
+            {
+                BlenderBridge.OpenBridgeFolder();
+            }
+            
+            EditorGUILayout.EndHorizontal();
+
+            EditorGUILayout.Space(10);
+
             // Optimization Button
             GUI.enabled = fullSnapshot != null && activeSnapshot != null && selectedAvatar != null;
             if (GUILayout.Button(
