@@ -21,9 +21,9 @@ Advanced mesh, bone, and texture optimization for VRChat avatars with **Unity Br
 ### Blender 5.0+
 1. Open Blender
 2. Go to `Edit > Preferences > Add-ons`
-3. Click `Install...`
-4. Select `vrchat_avatar_optimizer.py`
-5. Enable the addon by checking the box
+3. Click `Install from Disk...`
+4. Select `vrchat_avatar_optimizer_blender5.zip`
+5. Enable the addon by checking the box next to "VRChat Avatar Optimizer"
 
 ### Location
 After installation, find the panel in:
