@@ -6,6 +6,23 @@
   "packages": {
     "com.sophey3dx.avatar-optimizer": {
       "versions": {
+        "1.1.0": {
+          "name": "com.sophey3dx.avatar-optimizer",
+          "displayName": "VRChat Avatar Optimizer",
+          "version": "1.1.0",
+          "unity": "2022.3",
+          "description": "VRChat Avatar Optimizer with Outfit Wizard - create toggles, outfit swaps, PhysBone integration, and Blender Bridge.",
+          "author": {
+            "name": "Sophey3dx",
+            "url": "https://github.com/Sophey3dx"
+          },
+          "vpmDependencies": {
+            "com.vrchat.avatars": ">=3.4.0"
+          },
+          "url": "https://github.com/Sophey3dx/VR-Chat-Avatar-Optimizer/releases/download/v1.1.0/com.sophey3dx.avatar-optimizer-1.1.0.zip",
+          "legacyFolders": {},
+          "legacyFiles": {}
+        },
         "1.0.18": {
           "name": "com.sophey3dx.avatar-optimizer",
           "displayName": "VRChat Avatar Optimizer",
